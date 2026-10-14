@@ -36,6 +36,7 @@ from core.integrations.feishu.client import feishu_client
 from core.integrations.sync_outbox import sync_outbox
 from . import feishu_tasks
 from . import plan_generation
+from . import todo_archive, todo_candidates
 
 
 def delete_feishu_task(task_id: str) -> bool:
@@ -121,93 +122,19 @@ def load_staged_plan() -> Dict[str, Any]:
 def save_staged_plan(data: Dict[str, Any]) -> None:
     plan_generation.save_staged_plan(data, STAGED_PLAN_FILE)
 
-# --- 4. Extract Candidates from WeChat/Feishu Chat Logs ---
-# --- 4. Extract Candidates from WeChat/Feishu Chat Logs & Unfinished Todos ---
 def extract_candidates_from_chat() -> List[str]:
-    """Extract candidate action items from WeChat decrypted messages, Feishu bot logs, and today's unfinished todos."""
-    candidates = []
-    seen = set()
-
-    # 1. First automatically sync latest WeChat database to capture evening messages
-    try:
-        sync_wechat_database()
-    except Exception as se:
-        print(f"Sync WeChat db before extract warning: {se}")
-
-    today_start = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_ts = int(today_start.timestamp())
-
-    # 2. Extract from WeChat messages (both personal and group discussions)
-    if os.path.exists(WECHAT_MSG_DB):
-        try:
-            conn = sqlite3.connect(WECHAT_MSG_DB)
-            cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Msg_%';")
-            tables = [r[0] for r in cursor.fetchall()]
-
-            keywords = ["记得", "需要", "明天要", "待办", "处理一下", "安排", "改一下", "改下", "查一下", "确认下", "发一下", "买", "修复", "更新", "跟进", "测试"]
-
-            for t in tables:
-                try:
-                    cursor.execute(f"SELECT message_content, create_time, status FROM {t} WHERE create_time >= ? ORDER BY create_time DESC LIMIT 25;", (today_ts,))
-                    rows = cursor.fetchall()
-                    for content, c_time, status in rows:
-                        if not content or not isinstance(content, str):
-                            continue
-                        content = content.strip()
-                        if len(content) < 4 or len(content) > 80:
-                            continue
-                        if ":\n" in content[:30]:
-                            content = content.split(":\n", 1)[1].strip()
-                        if content.startswith("<?xml") or content.startswith("<msg>") or "<appmsg" in content or content.startswith("http"):
-                            continue
-                        has_kw = any(kw in content for kw in keywords)
-                        if has_kw and content not in seen:
-                            seen.add(content)
-                            candidates.append(content)
-                            if len(candidates) >= 5:
-                                break
-                except Exception:
-                    continue
-                if len(candidates) >= 5:
-                    break
-            conn.close()
-        except Exception as e:
-            print(f"WeChat scan exception: {e}")
-
-    # 3. Extract from Feishu Bot Logs of today
-    if os.path.exists(FEISHU_BOT_LOG):
-        try:
-            with open(FEISHU_BOT_LOG, "r", encoding="utf-8", errors="replace") as f:
-                for line in f:
-                    if "收到飞书新消息" in line and "内容: '" in line:
-                        m = re.search(r"内容:\s*'([^']+)'", line)
-                        if m:
-                            text = m.group(1).strip()
-                            if any(k in text for k in ["改", "换成", "加", "明天", "备忘", "待办", "计划", "做"]):
-                                if text not in seen and len(text) < 50:
-                                    seen.add(text)
-                                    candidates.append(text)
-        except Exception as fe:
-            print(f"Feishu log scan warning: {fe}")
-
-    # 4. Extract unfinished todos from 今日待办.md to rollover
-    if config.TODAY_TODO_PATH and os.path.exists(config.TODAY_TODO_PATH):
-        try:
-            with open(config.TODAY_TODO_PATH, "r", encoding="utf-8") as f:
-                for line in f:
-                    line_s = line.strip()
-                    if line_s.startswith("- [ ]") and "**" in line_s:
-                        m_todo = re.search(r"\*\*(.*?)\*\*", line_s)
-                        if m_todo:
-                            item = m_todo.group(1).strip()
-                            if item not in seen:
-                                seen.add(item)
-                                candidates.append(f"【顺延未完】{item}")
-        except Exception as te:
-            print(f"Todo rollover scan warning: {te}")
-
-    return candidates[:6]
+    return todo_candidates.extract_candidates(
+        sync_database=sync_wechat_database,
+        message_db=WECHAT_MSG_DB,
+        feishu_log=FEISHU_BOT_LOG,
+        todo_path=config.TODAY_TODO_PATH,
+        keywords=(
+            "记得", "需要", "明天要", "待办", "处理一下", "安排", "改一下",
+            "改下", "查一下", "确认下", "发一下", "买", "修复", "更新",
+            "跟进", "测试",
+        ),
+        log_keywords=("改", "换成", "加", "明天", "备忘", "待办", "计划", "做"),
+    )
 
 # --- 5. Send Unified Evening Review Prompt ---
 def send_evening_review_prompt() -> bool:
@@ -283,18 +210,7 @@ def send_evening_review_prompt() -> bool:
     }
 
 def get_weekly_archive_dir(archive_base: str, date_str: str) -> str:
-    """计算指定日期所属自然周 (周一至周日) 的周目录名，如 2026-W42 (10.12 - 10.18)"""
-    try:
-        dt = datetime.datetime.strptime(date_str, "%Y-%m-%d").date()
-    except Exception:
-        dt = datetime.date.today()
-    year, week, weekday = dt.isocalendar()
-    monday = dt - datetime.timedelta(days=weekday - 1)
-    sunday = monday + datetime.timedelta(days=6)
-    folder_name = f"{year}-W{week:02d} ({monday.strftime('%m.%d')} - {sunday.strftime('%m.%d')})"
-    target_dir = os.path.join(archive_base, folder_name)
-    os.makedirs(target_dir, exist_ok=True)
-    return target_dir
+    return todo_archive.get_weekly_archive_dir(archive_base, date_str)
 
 
 # --- 6. Generate and Publish Morning Todo ---
