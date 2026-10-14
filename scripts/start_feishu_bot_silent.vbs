@@ -2,5 +2,4 @@ Set WshShell = CreateObject("WScript.Shell")
 Set FSO = CreateObject("Scripting.FileSystemObject")
 ScriptsDir = FSO.GetParentFolderName(WScript.ScriptFullName)
 ProjectRoot = FSO.GetParentFolderName(ScriptsDir)
-WshShell.CurrentDirectory = ProjectRoot
-WshShell.Run "pythonw.exe " & Chr(34) & FSO.BuildPath(ProjectRoot, "server\feishu_bot_server.py") & Chr(34), 0, False
+WshShell.Run "wscript.exe " & Chr(34) & FSO.BuildPath(ProjectRoot, "run_bot_silent.vbs") & Chr(34), 0, False
