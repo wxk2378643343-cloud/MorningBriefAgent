@@ -9,6 +9,8 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import requests
+from integration_errors import ProviderResponseError, RetryableIntegrationError
+from retry import retry_call
 
 try:
     from . import config
@@ -23,12 +25,18 @@ class FeishuTaskGateway:
         self.session = session
 
     def _token(self) -> Optional[str]:
-        response = self.session.post(
-            f"{self.BASE}/auth/v3/tenant_access_token/internal",
-            json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
-            timeout=10,
-        )
-        return response.json().get("tenant_access_token")
+        try:
+            response = retry_call(lambda: self.session.post(
+                f"{self.BASE}/auth/v3/tenant_access_token/internal",
+                json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
+                timeout=10,
+            ))
+            payload = response.json()
+            if payload.get("code") != 0:
+                raise ProviderResponseError(payload.get("msg", "token request failed"))
+            return payload.get("tenant_access_token")
+        except requests.RequestException as exc:
+            raise RetryableIntegrationError(str(exc)) from exc
 
     def list(self, page_size: int = 50) -> list[dict[str, Any]]:
         for _ in range(3):
@@ -44,7 +52,7 @@ class FeishuTaskGateway:
                 payload = response.json()
                 if payload.get("code") == 0:
                     return payload.get("data", {}).get("items", [])
-            except Exception:
+            except (RetryableIntegrationError, ProviderResponseError):
                 continue
         return []
 

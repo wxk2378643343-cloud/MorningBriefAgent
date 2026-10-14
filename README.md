@@ -75,6 +75,15 @@ python -m compileall -q .
 python main.py doctor
 ```
 
+默认测试不会访问真实飞书。需要验证本机凭据和只读任务接口时，可显式运行：
+
+```powershell
+$env:RUN_LIVE_INTEGRATION="1"
+python -m unittest discover -s tests -v
+```
+
+真实集成检查只读取任务列表，不创建任务、日历事件或消息。
+
 再按需执行单个服务。建议先运行前台命令观察输出，确认配置正确后再接入 Windows 计划任务。
 
 ## 配置
@@ -113,7 +122,7 @@ WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 
 `NEWS_DOMESTIC_URLS` 和 `NEWS_WORLD_URLS` 是可替换的新闻源列表，使用分号分隔；新闻抓取器不再把具体 RSS/API 地址写死在源码中。
 
-外部写入使用稳定幂等键。默认状态文件为 `data/idempotency.json`（已被 Git 忽略），也可以显式设置：
+外部写入使用稳定幂等键。默认状态文件为 `data/idempotency.sqlite3`（已被 Git 忽略），也可以显式设置：
 
 ```dotenv
 IDEMPOTENCY_STORE_PATH=D:\path\to\runtime\data\idempotency.json

@@ -38,7 +38,8 @@ for path in (PROJECT_ROOT, CORE_DIR):
         sys.path.insert(0, path)
 
 import config
-from feishu_client import feishu_client
+from feishu_gateway import feishu_gateway
+from idempotency import make_key
 
 BENCHMARK_SYMBOLS = ["sh000001", "sz399006", "hkHSI"]
 
@@ -219,7 +220,9 @@ def send_daily_advisor_card() -> None:
         },
         "elements": [{"tag": "markdown", "content": content}],
     }
-    if not feishu_client.send_card(card):
+    if not feishu_gateway.send_card_once(
+        card, make_key("feishu-card", "fund", datetime.date.today().isoformat())
+    ):
         logger.warning("飞书卡片推送未确认成功，请检查配置与日志")
 
 

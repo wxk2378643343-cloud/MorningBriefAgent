@@ -33,7 +33,8 @@ if CORE_DIR not in sys.path:
 import config
 import agent_context
 import agent_provider
-from feishu_client import feishu_client
+from feishu_gateway import feishu_gateway
+from idempotency import make_key
 
 LOCAL_PROXY = config.LOCAL_PROXY
 
@@ -312,7 +313,9 @@ def build_feishu_news_card(news_data: Dict[str, Any], tech_items: List[Dict[str,
 
 def send_feishu(card: Dict[str, Any]) -> bool:
     """Send card via official openclaw feishu client."""
-    return feishu_client.send_card(card)
+    return feishu_gateway.send_card_once(
+        card, make_key("feishu-card", "news", datetime.date.today().isoformat())
+    )
 
 def record_news_to_obsidian(news_data: Dict[str, Any], tech_items: List[Dict[str, str]]):
     today_str = datetime.date.today().strftime("%Y-%m-%d")

@@ -34,7 +34,8 @@ import config
 import agent_context
 import agent_provider
 import feishu_calendar
-from feishu_client import feishu_client
+from feishu_gateway import feishu_gateway
+from idempotency import make_key
 
 FITNESS_PLAN_PATH = config.FITNESS_PLAN_PATH
 FITNESS_LOG_PATH = config.FITNESS_LOG_PATH
@@ -241,7 +242,11 @@ def build_feishu_fitness_card(workout_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def send_feishu(card: Dict[str, Any]) -> bool:
     """Send card via 爪爪openclaw OpenAPI (supports two-way interactive reply)."""
-    return feishu_client.send_card(card.get("card", card))
+    return feishu_gateway.send_card_once(
+        card.get("card", card), make_key(
+            "feishu-card", "fitness", datetime.date.today().isoformat()
+        )
+    )
 
 def record_fitness_to_obsidian(workout_data: Dict[str, Any]):
     today_str = datetime.date.today().strftime("%Y-%m-%d")

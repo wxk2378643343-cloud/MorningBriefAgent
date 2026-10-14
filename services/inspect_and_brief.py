@@ -22,7 +22,8 @@ import agent_context
 import agent_provider
 import config
 from email_analyzer import get_latest_high_value_email_digest
-from feishu_client import feishu_client
+from feishu_gateway import feishu_gateway
+from idempotency import make_key
 
 
 def collect_brief_data() -> Dict[str, Any]:
@@ -86,7 +87,9 @@ def build_detailed_feishu_card(analysis: str) -> Dict[str, Any]:
 
 
 def send_feishu_card(card: Dict[str, Any]) -> bool:
-    return feishu_client.send_card(card)
+    return feishu_gateway.send_card_once(
+        card, make_key("feishu-card", "brief", datetime.date.today().isoformat())
+    )
 
 
 def record_detailed_to_obsidian(analysis: str, generated_at: str) -> str | None:

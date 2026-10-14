@@ -48,7 +48,8 @@ if CORE_DIR not in sys.path:
 import config
 import agent_context
 import agent_provider
-from feishu_client import feishu_client
+from feishu_gateway import feishu_gateway
+from idempotency import make_key
 
 WECHAT_TOOLS_DIR = config.WECHAT_TOOLS_DIR
 DECRYPT_SCRIPT = os.path.join(WECHAT_TOOLS_DIR, "decrypt_db.py")
@@ -594,7 +595,9 @@ def build_feishu_card(analysis: Dict[str, Any], total_all_groups: int) -> Dict[s
 def push_to_feishu(card_payload: Dict[str, Any]) -> bool:
     """Push card directly via 爪爪openclaw OpenAPI (supports two-way interactive reply)."""
     card = card_payload.get("card", card_payload)
-    return feishu_client.send_card(card)
+    return feishu_gateway.send_card_once(
+        card, make_key("feishu-card", "chat-digest", datetime.date.today().isoformat())
+    )
 
 def archive_to_obsidian(analysis: Dict[str, Any]) -> str:
     """Archive detailed report covering all active users to Obsidian vault."""

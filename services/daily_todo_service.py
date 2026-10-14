@@ -39,8 +39,8 @@ import agent_context
 import agent_provider
 import feishu_calendar
 import idempotency
+from contracts import AgentPlan
 from feishu_gateway import feishu_gateway
-from feishu_task_gateway import task_gateway
 from feishu_client import feishu_client
 
 SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
@@ -114,7 +114,10 @@ def generate_agent_plan(target_date: str) -> Dict[str, Any]:
             data.setdefault("todos", [])
             data.setdefault("schedule_slots", [])
             data["date"] = target_date
-            return data
+            try:
+                return AgentPlan.from_dict(data, target_date).to_dict()
+            except ValueError as exc:
+                print(f"⚠️ Agent 计划契约校验失败: {exc}")
     except Exception as exc:
         print(f"Agent plan unavailable: {exc}")
     return {"date": target_date, "todos": [], "schedule_slots": []}
@@ -485,7 +488,7 @@ def generate_and_publish_morning_todo() -> bool:
 def delete_feishu_task(task_id: str) -> bool:
     """Delete a Feishu task by ID."""
     try:
-        return task_gateway.delete(task_id)
+        return feishu_gateway.delete_task(task_id)
     except Exception as e:
         print(f"⚠️ 删除飞书任务异常: {e}")
         return False
@@ -521,7 +524,7 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
             pass
 
     try:
-        task_data = task_gateway.create(summary, description, due_timestamp)
+        task_data = feishu_gateway.create_task(summary, description, due_timestamp)
         if task_data:
             provider_id = task_data.get("id") or task_data.get("task_id")
             if idempotency_key and provider_id:
@@ -536,7 +539,7 @@ def complete_feishu_task(task_id: str) -> bool:
     Mark a Feishu official task as completed using Task v1 complete API.
     """
     try:
-        if task_gateway.complete(task_id):
+        if feishu_gateway.complete_task(task_id):
             print(f"✅ 成功将飞书任务标记为完成: {task_id}")
             return True
         print(f"⚠️ 标记飞书任务完成失败 ({task_id})")
@@ -548,7 +551,7 @@ def complete_feishu_task(task_id: str) -> bool:
 def list_feishu_tasks(page_size: int = 50) -> List[Dict[str, Any]]:
     """Fetch recent Feishu tasks with auto-retry."""
     try:
-        return task_gateway.list(page_size)
+        return feishu_gateway.list_tasks(page_size)
     except Exception as e:
         print(f"⚠️ 获取飞书任务列表网络异常: {e}")
     return []
@@ -764,7 +767,12 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
     Strict Dual-Write Rule: Immediately write all schedule slots to Feishu Calendar OpenAPI.
     Ensures calendar is updated at review time AND morning time!
     """
-    target_date_str = plan_data.get("date", "")
+    try:
+        plan = AgentPlan.from_dict(plan_data)
+    except (TypeError, ValueError) as exc:
+        print(f"⚠️ 日历同步跳过，计划契约无效: {exc}")
+        return 0
+    target_date_str = plan.date
     if not target_date_str:
         return 0
 
@@ -774,7 +782,7 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
     except Exception:
         return 0
 
-    slots = plan_data.get("schedule_slots", [])
+    slots = [slot.to_dict() for slot in plan.schedule_slots]
     if not slots:
         return 0
 
@@ -795,7 +803,7 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
             if saved and saved.get("provider_id"):
                 written_count += 1
                 continue
-            ok, ev_id = feishu_calendar.calendar_mgr.create_silent_event(
+            ok, ev_id = feishu_gateway.create_calendar_event(
                 summary=s["summary"],
                 start_dt=s_dt,
                 end_dt=e_dt,
@@ -816,11 +824,16 @@ def sync_plan_to_feishu_tasks(plan_data: Dict[str, Any]) -> int:
     Strict Dual-Write Rule: Immediately batch create/sync all staged todos to Feishu Task OpenAPI.
     Ensures tasks are created at review time AND morning time!
     """
-    todos = plan_data.get("todos", [])
+    try:
+        plan = AgentPlan.from_dict(plan_data)
+    except (TypeError, ValueError) as exc:
+        print(f"⚠️ 任务同步跳过，计划契约无效: {exc}")
+        return 0
+    todos = plan.todos
     if not todos:
         return 0
 
-    target_date_str = plan_data.get("date", datetime.datetime.now().strftime("%Y-%m-%d"))
+    target_date_str = plan.date
     created_count = 0
     for t_title in todos:
         try:

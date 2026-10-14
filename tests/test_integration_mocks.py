@@ -16,6 +16,7 @@ import agent_provider
 import global_news
 import idempotency
 import daily_todo_service
+from contracts import AgentPlan
 from feishu_task_gateway import FeishuTaskGateway
 
 
@@ -83,22 +84,33 @@ class MockIntegrationTests(unittest.TestCase):
         self.assertEqual(result["todos"], ["mocked"])
         ask.assert_called_once_with("daily-plan", "plan it", "context")
 
+    def test_agent_plan_contract_rejects_invalid_schedule(self):
+        with self.assertRaises(ValueError):
+            AgentPlan.from_dict({
+                "date": "2026-10-14",
+                "todos": ["valid"],
+                "schedule_slots": [{
+                    "name": "bad", "start": "not-time", "end": "10:00",
+                    "summary": "invalid",
+                }],
+            })
+
     def test_task_sync_reuses_stable_idempotency_key(self):
         class FakeTasks:
             def __init__(self):
                 self.created = 0
 
-            def create(self, summary, description, due_timestamp=None):
+            def create_task(self, summary, description, due_timestamp=None):
                 self.created += 1
                 return {"id": "task-1", "summary": summary}
 
-            def list(self, page_size=50):
+            def list_tasks(self, page_size=50):
                 return []
 
         with tempfile.TemporaryDirectory() as tmp:
             fake_store = idempotency.IdempotencyStore(Path(tmp) / "keys.json")
             fake_tasks = FakeTasks()
-            with mock.patch.object(daily_todo_service, "task_gateway", fake_tasks), \
+            with mock.patch.object(daily_todo_service, "feishu_gateway", fake_tasks), \
                  mock.patch.object(idempotency, "store", fake_store):
                 plan = {"date": "2026-10-14", "todos": ["写测试"]}
                 self.assertEqual(daily_todo_service.sync_plan_to_feishu_tasks(plan), 1)

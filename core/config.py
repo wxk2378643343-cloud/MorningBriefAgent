@@ -70,7 +70,7 @@ FITNESS_LOG_PATH = os.getenv("FITNESS_LOG_PATH", "")
 FITNESS_ARCHIVE_DIR = os.getenv("FITNESS_ARCHIVE_DIR", "")
 CHAT_ARCHIVE_DIR = os.getenv("CHAT_ARCHIVE_DIR", "")
 IDEMPOTENCY_STORE_PATH = os.getenv(
-    "IDEMPOTENCY_STORE_PATH", str(PROJECT_ROOT / "data" / "idempotency.json")
+    "IDEMPOTENCY_STORE_PATH", str(PROJECT_ROOT / "data" / "idempotency.sqlite3")
 )
 
 # Feishu OpenAPI configuration. Credentials must never have source-code defaults.

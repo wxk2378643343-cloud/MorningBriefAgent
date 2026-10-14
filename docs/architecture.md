@@ -29,7 +29,10 @@
 - `core/config.py`：加载环境变量，不保存个人目录和秘密默认值。
 - `core/agent_context.py`：发现并截断本地上下文，把资料标记为不可信输入。
 - `core/agent_provider.py`：非对话任务的统一 Agent 入口和 JSON 解析。
+- `core/contracts.py`：Agent 计划进入业务副作用前的 dataclass 数据契约。
 - `core/agy_bridge.py`：现有本地 AGY 对话桥接；交互层暂时保留单会话。
+- `core/feishu_gateway.py`：卡片、任务、日历的统一应用入口。
+- `core/idempotency.py`：SQLite 幂等状态存储。
 - `services/`：业务用例，不应自行决定个人目标或硬编码外部数据源。
 - `server/`：飞书事件入口、鉴权、异步调度和回复。
 
@@ -48,3 +51,4 @@
 - 批处理 Agent 调用通过 `agent_provider.py` 统一。
 - 新闻源、邮件目录、计划文件和归档目录均由环境变量提供。
 - 日历同步不再按天删除全部事件，只按稳定身份复用计划自身的事件。
+- `RUN_LIVE_INTEGRATION=1` 才会启用只读真实飞书集成检查，默认测试保持离线。
