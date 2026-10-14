@@ -134,6 +134,11 @@ IDEMPOTENCY_STORE_PATH=D:\path\to\runtime\data\idempotency.json
 如果检测到旧版 `idempotency.json`，程序会自动导入 SQLite，并保留
 `idempotency.json.migrated` 作为迁移标记与备份。
 
+Outbox 失败记录会按退避时间重试，默认最多 5 次；超过次数后进入
+`dead_letter`，不会被 `reconcile` 无限重复调用。成功记录默认保留 30 天，
+可以通过 `OUTBOX_*` 配置调整。该机制仍由 Windows 任务计划定期执行
+`python main.py reconcile`，不需要常驻后台进程。
+
 待办输出路径也必须显式配置：
 
 ```dotenv

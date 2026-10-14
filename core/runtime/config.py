@@ -75,6 +75,13 @@ STAGED_PLAN_PATH = os.getenv(
 IDEMPOTENCY_STORE_PATH = os.getenv(
     "IDEMPOTENCY_STORE_PATH", str(PROJECT_ROOT / "data" / "idempotency.sqlite3")
 )
+OUTBOX_MAX_ATTEMPTS = int(os.getenv("OUTBOX_MAX_ATTEMPTS", "5"))
+OUTBOX_RETRY_DELAYS_SECONDS = tuple(
+    int(item) for item in _csv("OUTBOX_RETRY_DELAYS_SECONDS", "300,1800,7200,43200,86400")
+)
+OUTBOX_SUCCESS_RETENTION_DAYS = int(
+    os.getenv("OUTBOX_SUCCESS_RETENTION_DAYS", "30")
+)
 
 # Feishu OpenAPI configuration. Credentials must never have source-code defaults.
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")

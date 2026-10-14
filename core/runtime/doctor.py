@@ -41,10 +41,13 @@ def run_checks() -> list[str]:
     else:
         checks.append("[WARN] Feishu sender allowlist: 为空")
     pending = len(sync_outbox.pending())
+    dead_letters = len(sync_outbox.dead_letter())
     checks.append(
         f"[WARN] Sync outbox: {pending} 项待重试/待对账"
         if pending else "[OK] Sync outbox: 无待处理记录"
     )
+    if dead_letters:
+        checks.append(f"[WARN] Sync outbox dead-letter: {dead_letters} 项需人工处理")
     return checks
 
 

@@ -18,6 +18,7 @@ from core.integrations.feishu.task_gateway import FeishuTaskGateway
 from core.integrations.feishu.gateway import FeishuGateway
 from core.integrations.sync_outbox import SyncOutbox
 from core.integrations.reconcile import reconcile_pending
+from core.runtime import config
 from services.communications.chat_analysis import analyze_and_reflect
 
 
@@ -203,20 +204,35 @@ class MockIntegrationTests(unittest.TestCase):
             key = "card-replay"
             card = {"elements": [{"tag": "div"}]}
             outbox.begin(key, "feishu.card", {"idempotency_key": key, "card": card})
-            outbox.finish(key, False, "temporary outage")
             client = FakeClient()
             gateway = FeishuGateway(client)
 
-            result = reconcile_pending(
-                outbox=outbox, gateway=gateway, idempotency_store=store
-            )
-            again = reconcile_pending(
-                outbox=outbox, gateway=gateway, idempotency_store=store
-            )
+            with mock.patch.object(config, "OUTBOX_RETRY_DELAYS_SECONDS", (0,)):
+                outbox.finish(key, False, "temporary outage")
+                result = reconcile_pending(
+                    outbox=outbox, gateway=gateway, idempotency_store=store
+                )
+                again = reconcile_pending(
+                    outbox=outbox, gateway=gateway, idempotency_store=store
+                )
 
             self.assertEqual(result["recovered"], 1)
             self.assertEqual(again["examined"], 0)
             self.assertEqual(client.cards, [card])
+
+    def test_outbox_backoff_and_dead_letter_stop_infinite_retries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            outbox = SyncOutbox(store)
+            with mock.patch.object(config, "OUTBOX_MAX_ATTEMPTS", 2), \
+                 mock.patch.object(config, "OUTBOX_RETRY_DELAYS_SECONDS", (0,)):
+                outbox.begin("retry-key", "feishu.task", {"summary": "x"})
+                outbox.finish("retry-key", False, "first failure")
+                self.assertEqual(len(outbox.pending()), 1)
+                outbox.begin("retry-key", "feishu.task", {"summary": "x"})
+                outbox.finish("retry-key", False, "second failure")
+                self.assertEqual(outbox.pending(), [])
+                self.assertEqual(len(outbox.dead_letter()), 1)
 
     def test_calendar_sync_does_not_delete_unrelated_events(self):
         class FakeCalendar:
