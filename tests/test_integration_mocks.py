@@ -18,6 +18,7 @@ from core.integrations.feishu.task_gateway import FeishuTaskGateway
 from core.integrations.feishu.gateway import FeishuGateway
 from core.integrations.sync_outbox import SyncOutbox
 from core.integrations.reconcile import reconcile_pending
+from services.communications.chat_analysis import analyze_and_reflect
 
 
 class FakeResponse:
@@ -83,6 +84,34 @@ class MockIntegrationTests(unittest.TestCase):
             result = agent_provider.ask_json("daily-plan", "plan it", "context")
         self.assertEqual(result["todos"], ["mocked"])
         ask.assert_called_once_with("daily-plan", "plan it", "context")
+
+    def test_chat_analysis_keeps_agent_as_the_semantic_boundary(self):
+        private = [{
+            "name": "联系人",
+            "total_count": 1,
+            "my_count": 1,
+            "friend_count": 0,
+            "time_span": "09:00~09:00",
+            "messages": [("09:00", "本人", "明天跟进", "💬")],
+        }]
+        with mock.patch.object(
+            agent_provider,
+            "ask_json",
+            return_value={
+                "private": [{
+                    "index": 0,
+                    "topics": ["跟进"],
+                    "action_items": ["明天跟进"],
+                    "reflection": "有明确后续事项",
+                }],
+                "groups": [],
+                "overall": "存在一项明确跟进事项",
+            },
+        ) as ask:
+            result = analyze_and_reflect(private, [], "2026-10-14")
+        self.assertEqual(result["compact_privates"][0]["topics"], "跟进")
+        self.assertEqual(result["agent_summary"], "存在一项明确跟进事项")
+        ask.assert_called_once()
 
     def test_agent_plan_contract_rejects_invalid_schedule(self):
         with self.assertRaises(ValueError):
