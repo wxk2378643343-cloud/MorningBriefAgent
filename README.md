@@ -59,7 +59,7 @@ AI 分析、提炼重点、生成规划
 
 它的开源价值主要在于：展示如何把本地数据、本地知识库、Agent 分析和飞书 OpenAPI 组合起来，形成可以长期积累的个人工作流。项目不把我的具体目标、作息或生活规划写死在源码中；配置了自己的上下文后，Agent 才会根据本地资料进行个性化分析，没有上下文时则返回通用结果或请求补充信息。
 
-Special thanks to Mr. LD Jiang for recommending computer science books, sharing ideas about Agents, and encouraging me to keep experimenting.
+特别感谢 Mr. LD Jiang，感谢你推荐我阅读计算机相关书籍，分享 Agent 相关内容，并一直鼓励我保持尝试和实践。
 
 ## 项目背景与定位
 
