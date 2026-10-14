@@ -29,6 +29,8 @@
 - `core/runtime/`：加载环境变量和运行诊断，不保存个人目录和秘密默认值。
 - `core/agent/`：发现上下文、Agent Provider、AGY 桥接和数据契约。
 - `core/integrations/feishu/`：卡片、任务、日历、幂等、重试和错误分类。
+- `core/integrations/sync_outbox.py`：跨系统同步意图、失败状态和对账记录。
+- `core/runtime/observability.py`：correlation ID、结构化事件和耗时记录。
 - `core/parsers/`：邮件与本地内容解析。
 - `services/`：按业务域组织用例，不应自行决定个人目标或硬编码外部数据源。
 - `server/`：飞书事件入口、鉴权、异步调度和回复。
@@ -51,4 +53,5 @@
 - `RUN_LIVE_INTEGRATION=1` 才会启用只读真实飞书集成检查，默认测试保持离线。
 - 旧版 JSON 幂等记录启动时自动迁移到 SQLite，不删除原始文件。
 - 所有外部写入统一经过 `IdempotencyStore.execute_once`，不在业务服务重复实现“检查、执行、记录”。
+- 规划同步拆分为 `task_sync.py` 和 `calendar_sync.py`，Server 回复与图片流程位于 `server/replies.py`。
 - 所有内部代码统一使用包路径，避免同一实现被不同平铺模块名重复加载。

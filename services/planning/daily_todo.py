@@ -37,9 +37,11 @@ from core.integrations.feishu import idempotency
 from core.agent.contracts import AgentPlan
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.client import feishu_client
+from core.integrations.sync_outbox import sync_outbox
 
 SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
 from . import review_sync as review_sync_service
+from . import calendar_sync, task_sync
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 STAGED_PLAN_FILE = os.path.join(DATA_DIR, "staged_plan.json")
@@ -529,6 +531,10 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
 
     try:
         if idempotency_key:
+            sync_outbox.begin(
+                idempotency_key, "feishu.task",
+                {"idempotency_key": idempotency_key},
+            )
             task_data, reused = idempotency.store.execute_once(
                 idempotency_key,
                 lambda: feishu_gateway.create_task(summary, description, due_timestamp),
@@ -537,11 +543,14 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
             if isinstance(task_data, dict) and reused:
                 task_data = dict(task_data)
                 task_data["reused"] = True
+            sync_outbox.finish(idempotency_key, bool(task_data))
         else:
             task_data = feishu_gateway.create_task(summary, description, due_timestamp)
         if task_data:
             return task_data
     except Exception as e:
+        if idempotency_key:
+            sync_outbox.finish(idempotency_key, False, str(e))
         print(f"⚠️ 创建飞书任务网络异常: {e}")
     return None
 
@@ -774,92 +783,18 @@ def handle_todo_intent(user_text: str) -> Optional[str]:
                         return res
 
 def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
-    """
-    Strict Dual-Write Rule: Immediately write all schedule slots to Feishu Calendar OpenAPI.
-    Ensures calendar is updated at review time AND morning time!
-    """
     try:
-        plan = AgentPlan.from_dict(plan_data)
+        return calendar_sync.sync_plan_to_calendar(plan_data, feishu_gateway)
     except (TypeError, ValueError) as exc:
         print(f"⚠️ 日历同步跳过，计划契约无效: {exc}")
         return 0
-    target_date_str = plan.date
-    if not target_date_str:
-        return 0
-
-    try:
-        t_year, t_month, t_day = map(int, target_date_str.split("-"))
-        target_date = datetime.date(t_year, t_month, t_day)
-    except Exception:
-        return 0
-
-    slots = [slot.to_dict() for slot in plan.schedule_slots]
-    if not slots:
-        return 0
-
-    # Stable event identity plus provider-side duplicate detection. Never
-    # delete unrelated user-created events on the target day.
-    written_count = 0
-    for s in slots:
-        try:
-            s_hour, s_min = map(int, s["start"].split(":"))
-            e_hour, e_min = map(int, s["end"].split(":"))
-            s_dt = datetime.datetime.combine(target_date, datetime.time(s_hour, s_min))
-            e_dt = datetime.datetime.combine(target_date, datetime.time(e_hour, e_min))
-            key = idempotency.make_key(
-                "feishu-calendar", target_date_str, s.get("name", ""),
-                s.get("start", ""), s.get("end", ""), s.get("summary", "")
-            )
-            result, _ = idempotency.store.execute_once(
-                key,
-                lambda: feishu_gateway.create_calendar_event(
-                    summary=s["summary"],
-                    start_dt=s_dt,
-                    end_dt=e_dt,
-                    description=s.get("desc", s["summary"]),
-                    reminder_minutes=15,
-                ),
-                success=lambda value: bool(value and value[0]),
-            )
-            ok, ev_id = result
-            if ok:
-                written_count += 1
-        except Exception as se:
-            print(f"写入日历槽位异常 ({s.get('name')}): {se}")
-
-    return written_count
 
 def sync_plan_to_feishu_tasks(plan_data: Dict[str, Any]) -> int:
-    """
-    Strict Dual-Write Rule: Immediately batch create/sync all staged todos to Feishu Task OpenAPI.
-    Ensures tasks are created at review time AND morning time!
-    """
     try:
-        plan = AgentPlan.from_dict(plan_data)
+        return task_sync.sync_plan_to_feishu_tasks(plan_data, create_feishu_task)
     except (TypeError, ValueError) as exc:
         print(f"⚠️ 任务同步跳过，计划契约无效: {exc}")
         return 0
-    todos = plan.todos
-    if not todos:
-        return 0
-
-    target_date_str = plan.date
-    created_count = 0
-    for t_title in todos:
-        try:
-            task = create_feishu_task(
-                summary=t_title,
-                description=f"{target_date_str} 核心作战待办（已同步 Obsidian 知识库）",
-                idempotency_key=idempotency.make_key(
-                    "feishu-task", target_date_str, t_title
-                ),
-            )
-            if task:
-                created_count += 1
-        except Exception as e:
-            print(f"创建飞书任务异常 ({t_title}): {e}")
-
-    return created_count
 
     # 5. Evening Review Confirmation: 明确针对预审/排期的指令
     # 严格限定专用词汇，避免截胡通用审批词（如“确认”、“好的”、“执行”）

@@ -77,6 +77,12 @@ from core.agent import agy_bridge
 from services.planning import daily_todo as daily_todo_service
 from core.agent import context as agent_context
 from core.integrations.feishu.gateway import feishu_gateway
+from core.runtime.observability import event, traced
+from .replies import (
+    build_reply_card as _build_reply_card,
+    download_feishu_image as _download_feishu_image,
+    reply_feishu_message as _reply_feishu_message,
+)
 
 VAULT_ROOT = config.VAULT_ROOT
 
@@ -88,25 +94,7 @@ PROCESSED_MSG_IDS = set()
 PROCESSED_MSG_QUEUE = deque(maxlen=2000)
 
 def download_feishu_image(message_id: str, image_key: str) -> Optional[str]:
-    """Download image binary from Feishu Open API and save locally."""
-    image_data = feishu_gateway.download_image(message_id, image_key)
-    if not image_data:
-        logger.error("图片资源为空，无法下载飞书图片")
-        return None
-    
-    timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_key = re.sub(r'[^a-zA-Z0-9_-]', '_', image_key[-16:])
-    filename = f"{timestamp_str}_{message_id[-8:]}_{safe_key}.jpg"
-    filepath = os.path.join(IMAGE_DIR, filename)
-    
-    try:
-        with open(filepath, "wb") as f:
-            f.write(image_data)
-        logger.info(f"📸 [飞书图片下载成功] 已存至: {filepath} (大小: {len(image_data)} 字节)")
-        return filepath
-    except OSError as exc:
-        logger.error(f"❌ 保存飞书图片失败 (MsgID: {message_id}, key: {image_key}): {exc}")
-        return None
+    return _download_feishu_image(feishu_gateway, IMAGE_DIR, message_id, image_key)
 
 # User recent image buffer: user_open_id -> list of {"path": str, "time": float, "msg_id": str}
 USER_IMAGE_BUFFERS: Dict[str, List[Dict[str, Any]]] = {}
@@ -131,57 +119,12 @@ def get_and_clear_user_images(sender_open_id: str) -> List[str]:
     return valid
 
 def build_reply_card(content: str, title: str = "🤖 AGY 智能协同助手", template: str = "blue") -> dict:
-    """Build a high-aesthetic Feishu Interactive Card for replies."""
-    now_str = datetime.datetime.now().strftime("%H:%M:%S")
-    return {
-        "config": {
-            "wide_screen_mode": True
-        },
-        "header": {
-            "template": template,
-            "title": {
-                "tag": "plain_text",
-                "content": title
-            }
-        },
-        "elements": [
-            {
-                "tag": "markdown",
-                "content": content.strip()
-            },
-            {
-                "tag": "hr"
-            },
-            {
-                "tag": "note",
-                "elements": [
-                    {
-                        "tag": "plain_text",
-                        "content": f"Google Antigravity 原生引擎 · 回复时戳 {now_str}"
-                    }
-                ]
-            }
-        ]
-    }
+    return _build_reply_card(content, title, template)
 
 def reply_feishu_message(message_id: str, reply_text: str, title: str = "🤖 AGY 智能协同助手", template: str = "blue"):
-    """Reply to a message in Feishu thread using high-aesthetic Interactive Card."""
-    # 1. Primary: Send Interactive Card
-    card_obj = build_reply_card(reply_text, title=title, template=template)
-    if feishu_gateway.reply_card(message_id, card_obj):
-        logger.info(f"✅ 成功向飞书回复精美交互卡片 (MsgID: {message_id})")
-        return True
-    logger.warning("⚠️ 卡片回复失败，尝试降级纯文本...")
-
-    # 2. Fallback: Plain text fallback to guarantee message delivery
-    try:
-        if feishu_gateway.reply_text(message_id, reply_text):
-            logger.info(f"✅ 纯文本降级回复成功 (MsgID: {message_id})")
-            return True
-        logger.error("❌ 降级回复失败")
-    except Exception as ex:
-        logger.error(f"❌ 回复飞书消息彻底失败: {ex}")
-    return False
+    return _reply_feishu_message(
+        feishu_gateway, message_id, reply_text, title, template
+    )
 
 def gather_agent_context(query: str) -> str:
     """Collect only user-configured context; never assume a personal domain."""
@@ -189,10 +132,12 @@ def gather_agent_context(query: str) -> str:
     context = agent_context.collect_context(query)
     return f"【当前时间】\n{now}\n\n{context or '没有配置本地知识库上下文。'}"
 
+@traced(logger, "server.process_message")
 def process_message_async(sender_open_id: str, user_text: str, msg_id: str):
     """Worker task executed in thread pool to prevent blocking WebSocket loop."""
     try:
         # 1. Fast-track todo command & evening review confirmation
+        event(logger, "message_received", correlation_id=msg_id, message_id=msg_id)
         todo_reply = daily_todo_service.handle_todo_intent(user_text)
         if todo_reply:
             logger.info(f"⚡ [待办意图快速拦截命中] 立即响应待办指令: {user_text}")

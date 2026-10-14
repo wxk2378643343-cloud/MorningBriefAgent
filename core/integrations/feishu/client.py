@@ -15,6 +15,7 @@ import logging
 from typing import Optional, Dict, Any
 from .errors import RetryableIntegrationError
 from .retry import retry_call
+from core.runtime.observability import timed
 
 logger = logging.getLogger("FeishuClient")
 
@@ -36,30 +37,32 @@ class FeishuClient:
         self.session = requests.Session()
 
     def _post(self, *args, **kwargs):
-        def operation():
-            try:
-                response = self.session.post(*args, **kwargs)
-                if response.status_code in (429, 500, 502, 503, 504):
-                    raise RetryableIntegrationError(
-                        f"feishu provider status {response.status_code}"
-                    )
-                return response
-            except requests.RequestException as exc:
-                raise RetryableIntegrationError(str(exc)) from exc
-        return retry_call(operation)
+        with timed(logger, "feishu.http.post"):
+            def operation():
+                try:
+                    response = self.session.post(*args, **kwargs)
+                    if response.status_code in (429, 500, 502, 503, 504):
+                        raise RetryableIntegrationError(
+                            f"feishu provider status {response.status_code}"
+                        )
+                    return response
+                except requests.RequestException as exc:
+                    raise RetryableIntegrationError(str(exc)) from exc
+            return retry_call(operation)
 
     def _get(self, *args, **kwargs):
-        def operation():
-            try:
-                response = self.session.get(*args, **kwargs)
-                if response.status_code in (429, 500, 502, 503, 504):
-                    raise RetryableIntegrationError(
-                        f"feishu provider status {response.status_code}"
-                    )
-                return response
-            except requests.RequestException as exc:
-                raise RetryableIntegrationError(str(exc)) from exc
-        return retry_call(operation)
+        with timed(logger, "feishu.http.get"):
+            def operation():
+                try:
+                    response = self.session.get(*args, **kwargs)
+                    if response.status_code in (429, 500, 502, 503, 504):
+                        raise RetryableIntegrationError(
+                            f"feishu provider status {response.status_code}"
+                        )
+                    return response
+                except requests.RequestException as exc:
+                    raise RetryableIntegrationError(str(exc)) from exc
+            return retry_call(operation)
 
     def get_token(self) -> Optional[str]:
         """Fetch or refresh tenant access token."""

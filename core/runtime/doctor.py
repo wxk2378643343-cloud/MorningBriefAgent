@@ -7,8 +7,10 @@ from typing import Iterable
 
 try:
     from . import config
+    from ..integrations.sync_outbox import sync_outbox
 except ImportError:
-    import config
+    from core.runtime import config
+    from core.integrations.sync_outbox import sync_outbox
 
 
 def _check_path(label: str, value: str, must_exist: bool = False) -> str:
@@ -38,6 +40,11 @@ def run_checks() -> list[str]:
         checks.append("[OK] Feishu sender allowlist: 已配置")
     else:
         checks.append("[WARN] Feishu sender allowlist: 为空")
+    pending = len(sync_outbox.pending())
+    checks.append(
+        f"[WARN] Sync outbox: {pending} 项待重试/待对账"
+        if pending else "[OK] Sync outbox: 无待处理记录"
+    )
     return checks
 
 

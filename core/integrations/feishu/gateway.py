@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from ..sync_outbox import sync_outbox
 
 try:
     from . import calendar, client, idempotency
@@ -22,12 +23,18 @@ class FeishuGateway:
         The local record is written only after the provider acknowledges
         success, so ordinary failed requests remain retryable.
         """
-        sent, _ = idempotency.store.execute_once(
-            key,
-            lambda: self.client.send_card(card),
-            success=lambda result: result is True,
-        )
-        return bool(sent)
+        sync_outbox.begin(key, "feishu.card", {"idempotency_key": key})
+        try:
+            sent, _ = idempotency.store.execute_once(
+                key,
+                lambda: self.client.send_card(card),
+                success=lambda result: result is True,
+            )
+            sync_outbox.finish(key, bool(sent))
+            return bool(sent)
+        except Exception as exc:
+            sync_outbox.finish(key, False, str(exc))
+            raise
 
     def reply_card(self, message_id: str, card: dict) -> bool:
         return self.client.reply_message(message_id, card, "interactive")

@@ -260,6 +260,10 @@ from services.planning.daily_todo import morning_routine
 from core.integrations.feishu.gateway import feishu_gateway
 ```
 
+跨系统同步会记录到本地 SQLite Outbox；可通过 `python main.py doctor`
+查看待重试或待对账记录。Feishu 请求和机器人消息会输出不含正文的
+correlation ID、耗时和成功/失败事件，便于定位部分失败。
+
 `tests/manual_*.py` 和 `tests/check_*.py` 会访问本地服务、数据库或真实 Vault，只能手动运行，不属于默认单元测试。
 
 ## 安全与隐私
