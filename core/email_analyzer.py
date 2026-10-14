@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-email_content_analyzer.py - 订阅邮件深度内容解析与中文总结引擎
-解析收件箱 (05 - 收件箱/qqemail 与 谷歌email) 中的高质量技术订阅邮件，
+email_analyzer.py - 订阅邮件深度内容解析与中文总结引擎
+解析用户配置的本地邮件目录中的高质量技术订阅邮件，
 提取正文中的产品特性、发布要点、中文精读与官方跳转超链接。
 """
 
@@ -148,13 +148,21 @@ def analyze_subscription_email(file_path: str) -> Optional[Dict[str, Any]]:
         "features": features[:5]
     }
 
-def get_latest_high_value_email_digest(vault_root: str, hours: int = 48) -> List[Dict[str, Any]]:
-    """Scan qqemail and google email, find the most important subscription emails and analyze them."""
+def get_latest_high_value_email_digest(
+    vault_root: str = "",
+    hours: int = 48,
+    inbox_dirs: Optional[List[str]] = None,
+) -> List[Dict[str, Any]]:
+    """Scan configured email directories and analyze recent subscription emails.
+
+    ``vault_root`` remains accepted for API compatibility but is intentionally
+    not used to invent a directory layout. Configure ``EMAIL_INBOX_DIRS`` or
+    pass ``inbox_dirs`` explicitly.
+    """
     candidates = []
-    inbox_dirs = [
-        os.path.join(vault_root, "05 - 收件箱", "qqemail"),
-        os.path.join(vault_root, "05 - 收件箱", "谷歌email")
-    ]
+    if inbox_dirs is None:
+        raw_dirs = os.getenv("EMAIL_INBOX_DIRS", "").replace(";", ",")
+        inbox_dirs = [item.strip() for item in raw_dirs.split(",") if item.strip()]
     
     for d in inbox_dirs:
         if not os.path.exists(d):

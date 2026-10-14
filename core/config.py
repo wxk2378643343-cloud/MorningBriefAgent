@@ -32,7 +32,8 @@ def load_env_file(path: os.PathLike[str] | str = ENV_FILE) -> None:
 
 
 def _csv(name: str, default: str = "") -> tuple[str, ...]:
-    return tuple(item.strip() for item in os.getenv(name, default).split(",") if item.strip())
+    raw = os.getenv(name, default).replace(";", ",")
+    return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
 load_env_file()
@@ -52,9 +53,9 @@ WECHAT_GROUP_KEYWORDS = _csv("WECHAT_GROUP_KEYWORDS")
 WECHAT_EXCLUDED_USERNAMES = _csv("WECHAT_EXCLUDED_USERNAMES")
 WECHAT_EXCLUDED_NAME_KEYWORDS = _csv("WECHAT_EXCLUDED_NAME_KEYWORDS")
 
-# Obsidian paths
-INBOX_QQ_DIR = os.path.join(VAULT_ROOT, "05 - 收件箱", "qqemail")
-INBOX_GOOGLE_DIR = os.path.join(VAULT_ROOT, "05 - 收件箱", "谷歌email")
+# Configured local knowledge-base paths
+EMAIL_INBOX_DIRS = _csv("EMAIL_INBOX_DIRS")
+TECH_NEWS_DIR = os.getenv("TECH_NEWS_DIR", "")
 STUDY_TRACKER_PATH = os.getenv("STUDY_TRACKER_PATH", "")
 TODAY_TODO_PATH = os.path.join(VAULT_ROOT, "03 - 待办事项", "今日待办.md")
 

@@ -185,9 +185,9 @@ def get_domestic_and_world_news() -> Dict[str, List[Dict[str, str]]]:
     }
 
 def get_tech_radar_news() -> List[Dict[str, str]]:
-    """Extract latest GitHub Trending and AI agents from 05 - 收件箱/技术快讯."""
+    """Extract the latest technical digest from the configured local directory."""
     tech_items = []
-    tech_dir = os.path.join(config.VAULT_ROOT, "05 - 收件箱", "技术快讯")
+    tech_dir = config.TECH_NEWS_DIR
     
     if os.path.exists(tech_dir):
         files = sorted([f for f in os.listdir(tech_dir) if f.endswith(".md")], reverse=True)
@@ -209,11 +209,7 @@ def get_tech_radar_news() -> List[Dict[str, str]]:
                 pass
 
     if not tech_items:
-        tech_items = [
-            {"name": "阿里开源智能代码审查与合规治理框架", "repo": "alibaba/open-code-review", "url": "https://github.com/alibaba/open-code-review"},
-            {"name": "AI智能体自主操控浏览器开源框架", "repo": "browser-use/browser-use", "url": "https://github.com/browser-use/browser-use"},
-            {"name": "自主多智能体游戏社交框架", "repo": "elizaos/eliza", "url": "https://github.com/elizaos/eliza"}
-        ]
+        tech_items = []
     return tech_items
 
 def build_feishu_news_card(news_data: Dict[str, Any], tech_items: List[Dict[str, str]]) -> Dict[str, Any]:
@@ -306,7 +302,7 @@ def build_feishu_news_card(news_data: Dict[str, Any], tech_items: List[Dict[str,
                     "elements": [
                         {
                             "tag": "plain_text",
-                            "content": "信源：澎湃要闻 / 联合早报 / 05-收件箱技术快讯 / Morning-Brief Agent"
+                            "content": "信源：公开新闻源 / 本地技术摘要（如已配置） / MorningBriefAgent"
                         }
                     ]
                 }
@@ -321,7 +317,9 @@ def send_feishu(card: Dict[str, Any]) -> bool:
 
 def record_news_to_obsidian(news_data: Dict[str, Any], tech_items: List[Dict[str, str]]):
     today_str = datetime.date.today().strftime("%Y-%m-%d")
-    archive_dir = os.path.join(config.VAULT_ROOT, "05 - 收件箱", "技术快讯")
+    archive_dir = config.TECH_NEWS_DIR
+    if not archive_dir:
+        return None
     file_path = os.path.join(archive_dir, f"{today_str}-全球大势与科技早报.md")
     
     lines = [

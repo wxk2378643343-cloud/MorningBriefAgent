@@ -98,10 +98,14 @@ FEISHU_ALLOWED_OPEN_IDS=ou_xxx
 
 ```dotenv
 VAULT_ROOT=D:\path\to\your\obsidian-vault
+EMAIL_INBOX_DIRS=D:\path\to\mail\inbox;D:\path\to\another\mail\inbox
+TECH_NEWS_DIR=D:\path\to\technical\digest
 WECHAT_TOOLS_DIR=D:\path\to\wechat-decrypt
 WECHAT_MSG_DB=D:\path\to\decrypted\message\message_0.db
 WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 ```
+
+`EMAIL_INBOX_DIRS` 是邮件 Markdown 收件目录列表，`TECH_NEWS_DIR` 是可选的技术摘要目录，均使用分号分隔（邮件目录可配置多个）。解析器不会假设任何特定的 Vault 子目录名称；未配置时不会扫描对应数据。
 
 ### Agent 上下文与计划
 

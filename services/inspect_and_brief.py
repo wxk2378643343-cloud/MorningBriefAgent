@@ -27,7 +27,9 @@ from feishu_client import feishu_client
 
 def collect_brief_data() -> Dict[str, Any]:
     """Collect only configured context and email summaries."""
-    email_data = get_latest_high_value_email_digest(config.VAULT_ROOT)
+    email_data = get_latest_high_value_email_digest(
+        inbox_dirs=list(config.EMAIL_INBOX_DIRS)
+    )
     context = agent_context.collect_context("daily brief", max_files=10)
     return {
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
