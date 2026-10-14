@@ -69,7 +69,10 @@ ENV/
 env.bak/
 venv.bak/
 
-# --- 7. IDEs & Editors ---
+# --- 7. Local Windows Launch Scripts ---
+*.bat
+
+# --- 8. IDEs & Editors ---
 .vscode/
 .idea/
 *.sublime-project
@@ -81,7 +84,7 @@ venv.bak/
 *.swp
 *.swo
 
-# --- 8. OS Generated Files ---
+# --- 9. OS Generated Files ---
 Thumbs.db
 ehthumbs.db
 Desktop.ini
