@@ -32,7 +32,7 @@ if CORE_DIR not in sys.path:
 
 import config
 import agent_context
-import agy_bridge
+import agent_provider
 import feishu_calendar
 from feishu_client import feishu_client
 
@@ -121,9 +121,7 @@ def parse_today_workout() -> Dict[str, Any]:
             query=f"请分析 {now.strftime('%Y-%m-%d')} 的活动安排。",
             context=content[:24000],
         )
-        result = agy_bridge.ask_native_agy("activity-plan", prompt)
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", result or "", re.DOTALL)
-        parsed = json.loads(fenced.group(1) if fenced else result)
+        parsed = agent_provider.ask_json("activity-plan", prompt)
         if isinstance(parsed, dict):
             for key in ("weekday_str", "muscle_group", "tips"):
                 if isinstance(parsed.get(key), str) and parsed[key].strip():

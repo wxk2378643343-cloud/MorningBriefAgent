@@ -11,11 +11,29 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "core"))
 
 import config
+import agent_provider
 sys.path.insert(0, str(PROJECT_ROOT / "services"))
 import review_sync_service
 
 
 class ConfigSecurityTests(unittest.TestCase):
+    def test_agent_provider_parses_fenced_json(self):
+        with mock.patch.object(
+            agent_provider.agy_bridge,
+            "ask_native_agy",
+            return_value="```json\n{\"todos\": [\"review\"]}\n```",
+        ):
+            result = agent_provider.ask_json("test", "return json")
+        self.assertEqual(result, {"todos": ["review"]})
+
+    def test_agent_provider_rejects_non_object_json(self):
+        with mock.patch.object(
+            agent_provider.agy_bridge,
+            "ask_native_agy",
+            return_value='["not an object"]',
+        ):
+            self.assertIsNone(agent_provider.ask_json("test", "return json"))
+
     def test_env_loader_does_not_override_process_environment(self):
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / ".env"

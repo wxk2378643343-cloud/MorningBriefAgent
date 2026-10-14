@@ -19,7 +19,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path[:0] = [str(PROJECT_ROOT), str(PROJECT_ROOT / "core")]
 
 import agent_context
-import agy_bridge
+import agent_provider
 import config
 from email_analyzer import get_latest_high_value_email_digest
 from feishu_client import feishu_client
@@ -51,7 +51,7 @@ def analyze_brief(data: Dict[str, Any]) -> str:
         context=f"{data.get('context', '')}\n\n【邮件摘要】\n{email_text}",
     )
     try:
-        result = agy_bridge.ask_native_agy("daily-brief", prompt)
+        result = agent_provider.ask_text("daily-brief", prompt)
         if result and not result.startswith("❌"):
             return result
     except Exception:

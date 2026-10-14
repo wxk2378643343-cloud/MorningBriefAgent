@@ -72,6 +72,7 @@ python main.py --help
 ```powershell
 python -m unittest discover -s tests -v
 python -m compileall -q .
+python main.py doctor
 ```
 
 再按需执行单个服务。建议先运行前台命令观察输出，确认配置正确后再接入 Windows 计划任务。

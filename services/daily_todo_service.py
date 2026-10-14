@@ -36,7 +36,7 @@ if CORE_DIR not in sys.path:
 
 import config
 import agent_context
-import agy_bridge
+import agent_provider
 import feishu_calendar
 from feishu_client import feishu_client
 
@@ -106,10 +106,7 @@ def generate_agent_plan(target_date: str) -> Dict[str, Any]:
         query=f"请为 {target_date} 生成计划。",
     )
     try:
-        result = agy_bridge.ask_native_agy("daily-plan", prompt)
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", result, re.DOTALL)
-        raw = fenced.group(1) if fenced else result
-        data = json.loads(raw)
+        data = agent_provider.ask_json("daily-plan", prompt)
         if isinstance(data, dict):
             data.setdefault("todos", [])
             data.setdefault("schedule_slots", [])

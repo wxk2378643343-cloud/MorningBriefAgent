@@ -32,7 +32,7 @@ if CORE_DIR not in sys.path:
 
 import config
 import agent_context
-import agy_bridge
+import agent_provider
 from feishu_client import feishu_client
 
 LOCAL_PROXY = config.LOCAL_PROXY
@@ -105,9 +105,7 @@ def translate_and_summarize_world_news(en_title: str, en_desc: str) -> tuple[str
         context=f"【原标题】\n{en_title}\n\n【原文摘要】\n{en_desc}",
     )
     try:
-        result = agy_bridge.ask_native_agy("world-news-summary", prompt)
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", result or "", re.DOTALL)
-        parsed = json.loads(fenced.group(1) if fenced else result)
+        parsed = agent_provider.ask_json("world-news-summary", prompt)
         if isinstance(parsed, dict):
             title = str(parsed.get("title", "")).strip()
             summary = str(parsed.get("summary", "")).strip()
@@ -210,7 +208,7 @@ def generate_news_takeaway(
         context=context,
     )
     try:
-        result = agy_bridge.ask_native_agy("news-takeaway", prompt)
+        result = agent_provider.ask_text("news-takeaway", prompt)
         if result and not result.startswith("❌"):
             return result.strip()
     except Exception as exc:

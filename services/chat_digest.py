@@ -47,7 +47,7 @@ if CORE_DIR not in sys.path:
 
 import config
 import agent_context
-import agy_bridge
+import agent_provider
 from feishu_client import feishu_client
 
 WECHAT_TOOLS_DIR = config.WECHAT_TOOLS_DIR
@@ -367,7 +367,7 @@ def analyze_and_reflect(private_chats: List[Dict[str, Any]], group_chats: List[D
     )[:24000]
     agent_result = {}
     try:
-        agent_text = agy_bridge.ask_native_agy(
+        parsed = agent_provider.ask_json(
             "chat-digest",
             agent_context.build_prompt(
                 task=(
@@ -388,9 +388,6 @@ def analyze_and_reflect(private_chats: List[Dict[str, Any]], group_chats: List[D
                 context=raw_context,
             ),
         )
-        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", agent_text or "", re.DOTALL)
-        raw_json = fenced.group(1) if fenced else (agent_text or "")
-        parsed = json.loads(raw_json)
         if isinstance(parsed, dict):
             agent_result = parsed
     except Exception as exc:

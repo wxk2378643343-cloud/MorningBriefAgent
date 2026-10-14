@@ -75,6 +75,10 @@ def run_bot():
     from server.feishu_bot_server import start_bot
     start_bot()
 
+def run_doctor():
+    from core.doctor import main as doctor_main
+    doctor_main()
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -91,6 +95,7 @@ def main():
   todo-morning      早间核心三件事与日程安排同步
   todo-evening      晚间待办完成度复盘与成果流水账归档
   bot / server      飞书机器人长驻服务 (WebSocket 双向交互)
+  doctor            检查本地配置与依赖状态
 
 示例:
   python main.py brief
@@ -120,6 +125,7 @@ def main():
         "todo-evening": run_todo_evening,
         "bot": run_bot,
         "server": run_bot,
+        "doctor": run_doctor,
     }
 
     if cmd in cmd_map:
