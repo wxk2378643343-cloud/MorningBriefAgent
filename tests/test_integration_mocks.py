@@ -95,6 +95,18 @@ class MockIntegrationTests(unittest.TestCase):
                 }],
             })
 
+    def test_legacy_json_idempotency_store_is_migrated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            sqlite_path = Path(tmp) / "idempotency.sqlite3"
+            legacy_path = Path(tmp) / "idempotency.json"
+            legacy_path.write_text(
+                json.dumps({"legacy-key": {"provider_id": "old-1"}}),
+                encoding="utf-8",
+            )
+            migrated = idempotency.IdempotencyStore(sqlite_path)
+            self.assertEqual(migrated.get("legacy-key")["provider_id"], "old-1")
+            self.assertTrue((Path(tmp) / "idempotency.json.migrated").exists())
+
     def test_task_sync_reuses_stable_idempotency_key(self):
         class FakeTasks:
             def __init__(self):

@@ -30,8 +30,10 @@ class IdempotencyStore:
 
     def __init__(self, path: os.PathLike[str] | str | None = None):
         self.path = Path(path or config.IDEMPOTENCY_STORE_PATH)
+        self.legacy_path = self.path.with_suffix(".json")
         self._lock = threading.RLock()
         self._ensure_schema()
+        self._migrate_legacy_json()
 
     def _connect(self) -> sqlite3.Connection:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -50,6 +52,34 @@ class IdempotencyStore:
     def _ensure_schema(self) -> None:
         with self._connect() as connection:
             connection.commit()
+
+    def _migrate_legacy_json(self) -> None:
+        """Import the previous JSON store once, without deleting user data."""
+        if self.legacy_path == self.path or not self.legacy_path.is_file():
+            return
+        try:
+            legacy = json.loads(self.legacy_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return
+        if not isinstance(legacy, dict):
+            return
+        with self._lock, self._connect() as connection:
+            for key, value in legacy.items():
+                connection.execute(
+                    """
+                    INSERT OR IGNORE INTO idempotency(key, value_json)
+                    VALUES (?, ?)
+                    """,
+                    (str(key), json.dumps(value, ensure_ascii=False, separators=(",", ":"))),
+                )
+            connection.commit()
+        # Keep the ignored legacy file as a recoverable backup and write a
+        # marker so startup does not repeatedly scan it.
+        marker = self.legacy_path.with_suffix(".json.migrated")
+        try:
+            marker.write_text("migrated to SQLite\n", encoding="utf-8")
+        except OSError:
+            pass
 
     def get(self, key: str) -> Optional[Any]:
         with self._lock, self._connect() as connection:

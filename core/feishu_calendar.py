@@ -15,8 +15,11 @@ import io
 import json
 import urllib.request
 import urllib.parse
+import urllib.error
 import datetime
 from typing import Dict, Any, Optional, List, Tuple
+from integration_errors import RetryableIntegrationError
+from retry import retry_call
 
 if hasattr(sys.stdout, 'buffer'):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -39,6 +42,19 @@ class FeishuCalendarManager:
         self._token_expire = 0
         self._calendar_id = None
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    def _open(self, request, timeout=10):
+        def operation():
+            try:
+                response = self._opener.open(request, timeout=timeout)
+                if getattr(response, "status", 200) in (429, 500, 502, 503, 504):
+                    raise RetryableIntegrationError(
+                        f"calendar provider status {response.status}"
+                    )
+                return response
+            except (urllib.error.URLError, TimeoutError) as exc:
+                raise RetryableIntegrationError(str(exc)) from exc
+        return retry_call(operation)
         
     def get_token(self) -> Optional[str]:
         """Fetch or refresh tenant_access_token."""
@@ -53,7 +69,7 @@ class FeishuCalendarManager:
         payload = json.dumps({"app_id": self.app_id, "app_secret": self.app_secret}).encode("utf-8")
         req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json; charset=utf-8"})
         try:
-            with self._opener.open(req, timeout=10) as resp:
+            with self._open(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 if data.get("code") == 0:
                     self._token = data.get("tenant_access_token")
@@ -77,7 +93,7 @@ class FeishuCalendarManager:
         url = "https://open.feishu.cn/open-apis/calendar/v4/calendars"
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
         try:
-            with self._opener.open(req, timeout=10) as resp:
+            with self._open(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 if data.get("code") == 0:
                     cal_list = data.get("data", {}).get("calendar_list", [])
@@ -106,7 +122,7 @@ class FeishuCalendarManager:
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
         )
         try:
-            with self._opener.open(req, timeout=10) as resp:
+            with self._open(req, timeout=10) as resp:
                 pass # ACL ensured
         except Exception:
             pass
@@ -123,7 +139,7 @@ class FeishuCalendarManager:
         url = f"https://open.feishu.cn/open-apis/calendar/v4/calendars/{cal_id}/events?start_time={start_ts}&end_time={end_ts}"
         req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
         try:
-            with self._opener.open(req, timeout=10) as resp:
+            with self._open(req, timeout=10) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 items = data.get("data", {}).get("items", [])
                 # Return only active events with summary
@@ -191,7 +207,7 @@ class FeishuCalendarManager:
         )
 
         try:
-            with self._opener.open(req, timeout=10) as resp:
+            with self._open(req, timeout=10) as resp:
                 res = json.loads(resp.read().decode("utf-8"))
                 if res.get("code") == 0:
                     event_id = res.get("data", {}).get("event", {}).get("event_id")
@@ -207,7 +223,7 @@ class FeishuCalendarManager:
                             data=json.dumps(att_payload).encode("utf-8"),
                             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
                         )
-                        with self._opener.open(req_att, timeout=10) as att_resp:
+                        with self._open(req_att, timeout=10) as att_resp:
                             pass
                     return True, event_id
                 else:
@@ -231,7 +247,7 @@ class FeishuCalendarManager:
                 del_url = f"https://open.feishu.cn/open-apis/calendar/v4/calendars/{cal_id}/events/{ev_id}"
                 del_req = urllib.request.Request(del_url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
                 try:
-                    with self._opener.open(del_req, timeout=5):
+                    with self._open(del_req, timeout=5):
                         print(f"🗑️ 已清理旧日程: {it.get('summary')} ({ev_id})")
                 except Exception:
                     pass
@@ -246,7 +262,7 @@ class FeishuCalendarManager:
         del_url = f"https://open.feishu.cn/open-apis/calendar/v4/calendars/{cal_id}/events/{event_id}"
         del_req = urllib.request.Request(del_url, headers={"Authorization": f"Bearer {token}"}, method="DELETE")
         try:
-            with self._opener.open(del_req, timeout=5):
+            with self._open(del_req, timeout=5):
                 print(f"🗑️ 已成功删除日历日程: {event_id}")
                 return True
         except Exception as e:

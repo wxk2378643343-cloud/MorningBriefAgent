@@ -24,13 +24,27 @@ class FeishuTaskGateway:
     def __init__(self, session: Any = requests):
         self.session = session
 
+    def _request(self, method: str, url: str, **kwargs):
+        def operation():
+            try:
+                response = getattr(self.session, method)(url, **kwargs)
+                if getattr(response, "status_code", 200) in (429, 500, 502, 503, 504):
+                    raise RetryableIntegrationError(
+                        f"task provider status {response.status_code}"
+                    )
+                return response
+            except requests.RequestException as exc:
+                raise RetryableIntegrationError(str(exc)) from exc
+        return retry_call(operation)
+
     def _token(self) -> Optional[str]:
         try:
-            response = retry_call(lambda: self.session.post(
+            response = self._request(
+                "post",
                 f"{self.BASE}/auth/v3/tenant_access_token/internal",
                 json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
                 timeout=10,
-            ))
+            )
             payload = response.json()
             if payload.get("code") != 0:
                 raise ProviderResponseError(payload.get("msg", "token request failed"))
@@ -44,7 +58,8 @@ class FeishuTaskGateway:
                 token = self._token()
                 if not token:
                     continue
-                response = self.session.get(
+                response = self._request(
+                    "get",
                     f"{self.BASE}/task/v1/tasks?user_id_type=open_id&page_size={page_size}",
                     headers={"Authorization": f"Bearer {token}"},
                     timeout=10,
@@ -72,7 +87,8 @@ class FeishuTaskGateway:
         }
         if due_timestamp:
             payload["due"] = {"timestamp": str(due_timestamp)}
-        response = self.session.post(
+        response = self._request(
+            "post",
             f"{self.BASE}/task/v2/tasks?user_id_type=open_id",
             headers={
                 "Authorization": f"Bearer {token}",
@@ -88,7 +104,8 @@ class FeishuTaskGateway:
         token = self._token()
         if not token:
             return False
-        response = self.session.post(
+        response = self._request(
+            "post",
             f"{self.BASE}/task/v1/tasks/{task_id}/complete",
             headers={
                 "Authorization": f"Bearer {token}",
@@ -102,7 +119,8 @@ class FeishuTaskGateway:
         token = self._token()
         if not token:
             return False
-        response = self.session.delete(
+        response = self._request(
+            "delete",
             f"{self.BASE}/task/v1/tasks/{task_id}",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,

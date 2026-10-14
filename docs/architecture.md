@@ -33,6 +33,7 @@
 - `core/agy_bridge.py`：现有本地 AGY 对话桥接；交互层暂时保留单会话。
 - `core/feishu_gateway.py`：卡片、任务、日历的统一应用入口。
 - `core/idempotency.py`：SQLite 幂等状态存储。
+- `core/retry.py` / `core/integration_errors.py`：外部服务统一重试和错误分类。
 - `services/`：业务用例，不应自行决定个人目标或硬编码外部数据源。
 - `server/`：飞书事件入口、鉴权、异步调度和回复。
 
@@ -52,3 +53,4 @@
 - 新闻源、邮件目录、计划文件和归档目录均由环境变量提供。
 - 日历同步不再按天删除全部事件，只按稳定身份复用计划自身的事件。
 - `RUN_LIVE_INTEGRATION=1` 才会启用只读真实飞书集成检查，默认测试保持离线。
+- 旧版 JSON 幂等记录启动时自动迁移到 SQLite，不删除原始文件。

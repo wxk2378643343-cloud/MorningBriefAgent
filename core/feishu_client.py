@@ -13,6 +13,8 @@ import time
 import requests
 import logging
 from typing import Optional, Dict, Any
+from integration_errors import RetryableIntegrationError
+from retry import retry_call
 
 logger = logging.getLogger("FeishuClient")
 
@@ -33,6 +35,19 @@ class FeishuClient:
         self._token_expire = 0
         self.session = requests.Session()
 
+    def _post(self, *args, **kwargs):
+        def operation():
+            try:
+                response = self.session.post(*args, **kwargs)
+                if response.status_code in (429, 500, 502, 503, 504):
+                    raise RetryableIntegrationError(
+                        f"feishu provider status {response.status_code}"
+                    )
+                return response
+            except requests.RequestException as exc:
+                raise RetryableIntegrationError(str(exc)) from exc
+        return retry_call(operation)
+
     def get_token(self) -> Optional[str]:
         """Fetch or refresh tenant access token."""
         now = time.time()
@@ -45,7 +60,7 @@ class FeishuClient:
 
         url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
         try:
-            r = self.session.post(url, json={"app_id": self.app_id, "app_secret": self.app_secret}, timeout=10)
+            r = self._post(url, json={"app_id": self.app_id, "app_secret": self.app_secret}, timeout=10)
             res = r.json()
             if res.get("code") == 0:
                 self._token = res.get("tenant_access_token")
@@ -99,7 +114,7 @@ class FeishuClient:
         }
 
         try:
-            r = self.session.post(url, headers=headers, json=payload, timeout=12)
+            r = self._post(url, headers=headers, json=payload, timeout=12)
             res = r.json()
             if res.get("code") == 0:
                 msg_id = res.get("data", {}).get("message_id")
@@ -119,7 +134,7 @@ class FeishuClient:
                     "msg_type": "interactive",
                     "content": json.dumps(card, ensure_ascii=False)
                 }
-                r2 = self.session.post(fb_url, headers=headers, json=fb_payload, timeout=10)
+                r2 = self._post(fb_url, headers=headers, json=fb_payload, timeout=10)
                 if r2.json().get("code") == 0:
                     logger.info("✅ 爪爪openclaw 私聊回退兜底发送成功!")
                     return True
@@ -163,7 +178,7 @@ class FeishuClient:
         }
 
         try:
-            r = self.session.post(url, headers=headers, json=payload, timeout=10)
+            r = self._post(url, headers=headers, json=payload, timeout=10)
             res = r.json()
             return res.get("code") == 0
         except Exception as e:

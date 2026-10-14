@@ -130,6 +130,9 @@ IDEMPOTENCY_STORE_PATH=D:\path\to\runtime\data\idempotency.json
 
 任务按“日期 + 标题”复用，日历按“日期 + 时间槽 + 摘要”复用；同步计划不会删除目标日期中用户手动创建的其他日程。
 
+如果检测到旧版 `idempotency.json`，程序会自动导入 SQLite，并保留
+`idempotency.json.migrated` 作为迁移标记与备份。
+
 待办输出路径也必须显式配置：
 
 ```dotenv
