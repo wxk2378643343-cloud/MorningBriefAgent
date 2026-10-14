@@ -44,6 +44,7 @@ from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.idempotency import make_key
 from .chat_analysis import analyze_and_reflect
 from . import chat_reader
+from . import chat_archive, chat_renderer
 
 WECHAT_TOOLS_DIR = config.WECHAT_TOOLS_DIR
 DECRYPT_SCRIPT = os.path.join(WECHAT_TOOLS_DIR, "decrypt_db.py")
@@ -360,6 +361,17 @@ def scan_target_group_chats(
         end_ts,
         tuple(SPECIFIED_GROUP_KEYWORDS),
     )
+
+
+def build_feishu_card(
+    analysis: Dict[str, Any],
+    total_all_groups: int,
+) -> Dict[str, Any]:
+    return chat_renderer.build_feishu_card(analysis, total_all_groups)
+
+
+def archive_to_obsidian(analysis: Dict[str, Any]) -> str:
+    return chat_archive.archive_to_obsidian(analysis, config.CHAT_ARCHIVE_DIR)
 
 
 if __name__ == "__main__":
