@@ -26,15 +26,11 @@
 
 ## 边界
 
-- `core/config.py`：加载环境变量，不保存个人目录和秘密默认值。
-- `core/agent_context.py`：发现并截断本地上下文，把资料标记为不可信输入。
-- `core/agent_provider.py`：非对话任务的统一 Agent 入口和 JSON 解析。
-- `core/contracts.py`：Agent 计划进入业务副作用前的 dataclass 数据契约。
-- `core/agy_bridge.py`：现有本地 AGY 对话桥接；交互层暂时保留单会话。
-- `core/feishu_gateway.py`：卡片、任务、日历的统一应用入口。
-- `core/idempotency.py`：SQLite 幂等状态存储。
-- `core/retry.py` / `core/integration_errors.py`：外部服务统一重试和错误分类。
-- `services/`：业务用例，不应自行决定个人目标或硬编码外部数据源。
+- `core/runtime/`：加载环境变量和运行诊断，不保存个人目录和秘密默认值。
+- `core/agent/`：发现上下文、Agent Provider、AGY 桥接和数据契约。
+- `core/integrations/feishu/`：卡片、任务、日历、幂等、重试和错误分类。
+- `core/parsers/`：邮件与本地内容解析。
+- `services/`：按业务域组织用例，不应自行决定个人目标或硬编码外部数据源。
 - `server/`：飞书事件入口、鉴权、异步调度和回复。
 
 ## 数据流规则
@@ -55,3 +51,4 @@
 - `RUN_LIVE_INTEGRATION=1` 才会启用只读真实飞书集成检查，默认测试保持离线。
 - 旧版 JSON 幂等记录启动时自动迁移到 SQLite，不删除原始文件。
 - 所有外部写入统一经过 `IdempotencyStore.execute_once`，不在业务服务重复实现“检查、执行、记录”。
+- 根目录旧模块名是兼容别名，真实实现位于职责对应的子包中；新代码应优先使用包路径。
