@@ -31,6 +31,167 @@ Obsidian 日记、周报、月报
 
 项目的差异点不是某个单独的 AI 模型，而是把多个本地数据源收敛为统一入口，并把目标、偏好和计划交给 Agent 从本地知识库推断。没有配置上下文时，系统不会猜测用户的生活规划，而是返回通用结果或请求补充信息。
 
+## 项目背景与定位
+
+个人自动化系统通常会逐渐变成一组互相调用的脚本：新闻抓取、邮件解析、聊天复盘、待办生成和飞书写入各自维护一套规则，最终导致路径写死、个人信息进入源码、重复写入以及失败后无法恢复。
+
+MorningBriefAgent 的目标，是把这类脚本收敛为一个“本地数据 + Agent 推理 + 外部工具执行”的模块化单体应用：
+
+- 本地文件、SQLite、邮件和聊天数据库是可替换的数据输入；
+- Agent 负责理解上下文、提炼语义和生成计划，不把个人规划硬编码在 Python 分支中；
+- 业务服务只处理领域流程，不直接依赖飞书 SDK 或具体文件路径；
+- 飞书卡片、任务、日历和 Obsidian 写入通过统一网关、契约、幂等和 Outbox 保障可恢复性；
+- 默认以单用户、自托管、Windows 优先为目标，不伪装成多租户 SaaS。
+
+因此，这个项目更适合作为个人生产力 Agent 的架构样板、飞书自动化的二次开发基础，以及本地敏感数据工作流的工程实践参考。
+
+## 技术栈
+
+| 层面 | 技术与选择 |
+| --- | --- |
+| 运行时 | Python 3.10+、Windows 10/11 优先 |
+| 外部平台 | Feishu/Lark Open API、WebSocket 长连接 |
+| Agent | 本地 Agent Provider；通过单一对话边界接入，支持 Mock |
+| 本地存储 | Markdown/Obsidian、SQLite、可选本地邮件和聊天数据库 |
+| 网络与解析 | `requests`、Python 标准库 RSS/XML/JSON 解析、BeautifulSoup |
+| 数据契约 | `dataclass`，用于 Agent 计划、同步命令和跨层数据 |
+| 可靠性 | SQLite 幂等键、Outbox、退避重试、Dead Letter、相关性标识 |
+| 测试 | Python `unittest`、Mock Provider、临时 SQLite、可选只读真实集成测试 |
+| 调度 | Windows 任务计划；不要求常驻 Outbox Worker |
+
+项目刻意保持轻量：配置加载器、文件读取、RSS 解析和测试基线优先使用 Python 标准库；第三方库主要用于飞书 SDK、HTTP、HTML 和压缩数据处理。
+
+## 总体架构
+
+```mermaid
+flowchart TD
+    subgraph Inputs["本地输入与公开来源"]
+        Vault["Obsidian / Markdown"]
+        Mail["邮件目录"]
+        ChatDB["聊天 SQLite"]
+        RSS["RSS / JSON 新闻源"]
+        User["用户飞书回复"]
+    end
+
+    subgraph App["应用编排层"]
+        CLI["main.py CLI / Windows Task"]
+        Bot["Feishu WebSocket Bot"]
+        Services["业务服务\n晨报 · 待办 · 复盘 · 聊天分析"]
+        Agent["Agent Boundary\n上下文组装与结构化计划"]
+        Contract["数据契约\n@dataclass"]
+    end
+
+    subgraph Reliability["可靠性与本地运行状态"]
+        Config["Config Loader\n.env + 环境变量"]
+        Idem["SQLite Idempotency"]
+        Outbox["SQLite Outbox\n重试 · 退避 · Dead Letter"]
+    end
+
+    subgraph Adapters["端口与适配器"]
+        Feishu["FeishuGateway\n卡片 · 任务 · 日历"]
+        Readers["文件 / 邮件 / 聊天 / RSS Readers"]
+        LocalWriter["Markdown / Obsidian Writer"]
+    end
+
+    subgraph External["外部系统"]
+        FeishuAPI["Feishu API"]
+        LocalFiles["本地文件与知识库"]
+    end
+
+    Vault --> Readers
+    Mail --> Readers
+    ChatDB --> Readers
+    RSS --> Readers
+    User --> Bot
+    CLI --> Services
+    Bot --> Services
+    Readers --> Services
+    Services --> Agent
+    Agent --> Contract
+    Contract --> Services
+    Config -.-> CLI
+    Config -.-> Services
+    Services --> Feishu
+    Services --> LocalWriter
+    Feishu --> FeishuAPI
+    LocalWriter --> LocalFiles
+    Services --> Idem
+    Services --> Outbox
+    Outbox --> Feishu
+    Feishu --> Idem
+```
+
+典型执行链路是：
+
+```text
+读取输入
+  → 标准化为内部数据
+  → 组装 Agent 上下文
+  → Agent 输出结构化计划
+  → 业务服务校验与编排
+  → 网关执行外部写入
+  → 幂等键 + Outbox 记录结果
+  → 用户确认后再落盘或同步
+```
+
+## 架构思路与采用的方案
+
+### 1. 模块化单体（Modular Monolith）
+
+项目目前不拆成微服务。所有模块在一个 Python 进程或一次计划任务中运行，但按领域和技术边界拆分为 `core/`、`services/`、`server/` 和 `tests/`。这样保留本地部署的低成本，同时让未来替换 Agent、飞书或数据源时不必重写全部业务逻辑。
+
+### 2. 分层架构 + 六边形架构思想
+
+业务服务位于中心，输入读取器和外部写入网关属于适配器。业务代码依赖内部契约和能力接口，不直接依赖具体 SDK、Windows 路径或某个 RSS 地址。当前项目采用的是“实用的六边形架构思想”，不是完整框架化的依赖注入容器。
+
+```text
+输入适配器 → 应用服务 / 领域流程 ← 外部写入适配器
+                    ↑
+             Agent 与数据契约
+```
+
+### 3. Agent 语义边界（Semantic Boundary）
+
+规则适合做格式校验、权限校验、时间范围和幂等判断；“从上下文理解目标、筛选重点、生成计划、解释沟通内容”交给 Agent。项目保留一个统一对话入口，避免每个业务模块都自行拼接 Prompt 或调用模型。
+
+Agent 输出先经过 `dataclass` 契约校验，再进入任务、日历和 Markdown 写入流程。这样模型可以替换，业务层也不会被模型返回格式绑死。
+
+### 4. Ports and Adapters / Anti-Corruption Layer
+
+飞书卡片、任务和日历统一收敛到 `FeishuGateway`；邮件、RSS、聊天数据库和 Markdown 也通过各自 Reader/Writer 隔离。适配器负责把外部格式翻译成内部格式，避免第三方 SDK 的对象和错误类型扩散到业务层。
+
+### 5. 幂等写入 + Transactional Outbox
+
+外部 API 可能出现“请求成功但响应丢失”或网络超时。项目使用稳定业务键和 SQLite 幂等存储防止重复创建，同时用 Outbox 记录待执行副作用：
+
+```text
+业务操作
+  → 写入 Outbox 意图
+  → 调用 Feishu 适配器
+  → 成功：succeeded
+  → 失败：failed + 退避
+  → 超过次数：dead_letter
+  → python main.py reconcile 手动重放
+```
+
+这是一种适合单机任务调度的可靠性方案，不等同于分布式消息队列；它不需要常驻服务，也不会无限重试失败请求。
+
+### 6. 配置驱动与隐私边界
+
+路径、新闻源、个人上下文、飞书凭据和筛选规则都从环境变量或本地 `.env` 读取。源码只保留脱敏模板，个人规划只存在本地知识库。配置缺失时系统应跳过对应能力或返回诊断信息，而不是猜测用户目录。
+
+### 7. 可测试的外部边界
+
+Provider、Feishu Gateway、RSS、聊天读取器和 SQLite 存储都可以用 Mock 或临时目录测试。默认测试不访问真实飞书、不读取真实聊天库、不写入真实知识库；真实集成测试必须显式开启，并且默认只执行只读检查。
+
+### 不采用的方案
+
+- 不采用微服务：当前规模和部署场景不值得承担网络治理与运维成本；
+- 不采用常驻消息队列：Outbox + Windows 计划任务已经满足个人单机可靠性需求；
+- 不把规则全部交给 LLM：权限、幂等、数据写入和安全检查必须由确定性代码控制；
+- 不把个人目标写进领域模块：这会破坏可复用性，也会增加开源泄露风险；
+- 不默认执行真实写入测试：避免测试误创建飞书任务、日历或消息。
+
 ## 功能概览
 
 | 能力 | 命令 | 主要依赖 | 当前状态 |
@@ -265,7 +426,7 @@ MorningBriefAgent/
 │  ├─ lifestyle/         # 健身与生活方式
 │  └─ finance/           # 基金与市场摘要
 ├─ server/               # 飞书 WebSocket 长连接机器人
-├─ scripts/              # Windows 调度与后台启动脚本
+├─ scripts/              # 可选的本地维护脚本（不含 .bat/.vbs 启动器）
 ├─ tests/                # 离线单元测试与显式运行的手工集成检查
 ├─ data/                 # 本地运行状态，仅提交 .gitkeep
 ├─ logs/                 # 本地日志，仅提交 .gitkeep
