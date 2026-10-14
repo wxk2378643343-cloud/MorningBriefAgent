@@ -1,0 +1,90 @@
+# ==============================================================================
+# MorningBriefAgent - Comprehensive Security & GitIgnore Rules
+# ==============================================================================
+
+# --- 1. Python Bytecode & Cache ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# --- 2. Environment Variables & Secret Credentials ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+credentials.json
+client_secrets.json
+
+# --- 3. Runtime Logs & Diagnostic Outputs ---
+logs/*
+!logs/.gitkeep
+*.log
+*.log.*
+*.pid
+
+# --- 4. Personal Runtime Data & Media ---
+data/*.json
+!data/*.example.json
+data/*.sqlite
+data/*.sqlite3
+data/*.db
+!data/.gitkeep
+received_images/*
+!received_images/.gitkeep
+core/user_sessions.json
+vault/
+
+# --- 5. Test / coverage caches ---
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# --- 6. Virtual Environments ---
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- 7. IDEs & Editors ---
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*.swo
+
+# --- 8. OS Generated Files ---
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+._*

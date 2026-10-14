@@ -1,0 +1,20 @@
+{
+  "target_date": "2027-12-31",
+  "profit_target": 0,
+  "portfolio": [
+    {
+      "code": "example",
+      "name": "示例基金（请替换）",
+      "category": "示例分类",
+      "cost_value": 0,
+      "current_value": 0,
+      "profit": 0,
+      "rate": 0,
+      "daily_sip": 0,
+      "proxy_symbol": "sh000001",
+      "proxy_name": "上证指数",
+      "strategy": "仅记录你自行制定的策略，不要把私人持仓提交到 Git。"
+    }
+  ],
+  "watchlist": []
+}
