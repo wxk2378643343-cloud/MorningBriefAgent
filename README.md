@@ -100,12 +100,17 @@ FEISHU_ALLOWED_OPEN_IDS=ou_xxx
 VAULT_ROOT=D:\path\to\your\obsidian-vault
 EMAIL_INBOX_DIRS=D:\path\to\mail\inbox;D:\path\to\another\mail\inbox
 TECH_NEWS_DIR=D:\path\to\technical\digest
+NEWS_DOMESTIC_URLS=https://example.com/domestic.json;https://example.com/domestic-live.json
+NEWS_WORLD_URLS=https://example.com/world.rss;https://example.com/another-world.rss
+NEWS_FALLBACK_LINK=https://example.com/news
 WECHAT_TOOLS_DIR=D:\path\to\wechat-decrypt
 WECHAT_MSG_DB=D:\path\to\decrypted\message\message_0.db
 WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 ```
 
 `EMAIL_INBOX_DIRS` 是邮件 Markdown 收件目录列表，`TECH_NEWS_DIR` 是可选的技术摘要目录，均使用分号分隔（邮件目录可配置多个）。解析器不会假设任何特定的 Vault 子目录名称；未配置时不会扫描对应数据。
+
+`NEWS_DOMESTIC_URLS` 和 `NEWS_WORLD_URLS` 是可替换的新闻源列表，使用分号分隔；新闻抓取器不再把具体 RSS/API 地址写死在源码中。
 
 待办输出路径也必须显式配置：
 

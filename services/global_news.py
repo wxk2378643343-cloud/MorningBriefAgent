@@ -42,7 +42,9 @@ def get_domestic_news() -> List[Dict[str, str]]:
     items = []
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
-        url = "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2509&k=&num=8&page=1"
+        url = config.NEWS_DOMESTIC_URLS[0] if config.NEWS_DOMESTIC_URLS else ""
+        if not url:
+            return items
         req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with opener.open(req, timeout=6) as resp:
             data = json.loads(resp.read().decode("utf-8"))
@@ -62,16 +64,16 @@ def get_domestic_news() -> List[Dict[str, str]]:
         print(f"⚠️ 获取国内滚重新闻异常: {e}")
         
     # Fallback to Sina 7x24 Live
-    if len(items) < 3:
+    if len(items) < 3 and len(config.NEWS_DOMESTIC_URLS) > 1:
         try:
-            live_url = "https://zhibo.sina.com.cn/api/zhibo/feed?zhibo_id=152&id=0&tag_id=0&page=1&page_size=6&type=0"
+            live_url = config.NEWS_DOMESTIC_URLS[1]
             req = urllib.request.Request(live_url, headers={"User-Agent": "Mozilla/5.0"})
             with opener.open(req, timeout=5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 for entry in data.get("result", {}).get("data", {}).get("feed", {}).get("list", []):
                     txt = entry.get("rich_text") or entry.get("content") or ""
                     txt = re.sub(r"<[^>]+>", "", txt).strip()
-                    doc_url = entry.get("doc_url") or "https://finance.sina.com.cn/"
+                    doc_url = entry.get("doc_url") or config.NEWS_FALLBACK_LINK
                     if txt:
                         title_part = txt.split("【")[-1].split("】")[0] if "【" in txt and "】" in txt else txt[:45]
                         items.append({
@@ -125,34 +127,11 @@ def get_world_news() -> List[Dict[str, str]]:
     )
     opener = urllib.request.build_opener(proxy_handler)
     
-    # 1. BBC World News
-    try:
-        url = "http://feeds.bbci.co.uk/news/world/rss.xml"
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with opener.open(req, timeout=10) as resp:
-            content = resp.read()
-        root = ET.fromstring(content)
-        for item in root.findall(".//item")[:3]:
-            title = item.findtext("title", "").strip()
-            link = item.findtext("link", "").strip()
-            desc = item.findtext("description", "").strip()
-            clean_desc = re.sub(r"<[^>]+>", "", desc).replace("&nbsp;", " ").strip()
-            if title and link:
-                zh_t, zh_d = translate_and_summarize_world_news(title, clean_desc)
-                items.append({
-                    "title": zh_t,
-                    "en_title": title,
-                    "link": link,
-                    "desc": zh_d
-                })
-    except Exception as e:
-        print(f"⚠️ 代理拉取 BBC 异常: {e}")
-
-    # 2. If needed, NYT World
-    if len(items) < 3:
+    for source_url in config.NEWS_WORLD_URLS:
+        if len(items) >= 3:
+            break
         try:
-            url = "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            req = urllib.request.Request(source_url, headers={"User-Agent": "Mozilla/5.0"})
             with opener.open(req, timeout=10) as resp:
                 content = resp.read()
             root = ET.fromstring(content)
@@ -172,7 +151,7 @@ def get_world_news() -> List[Dict[str, str]]:
                 if len(items) >= 3:
                     break
         except Exception as e:
-            print(f"⚠️ 代理拉取 NYTimes 异常: {e}")
+            print(f"⚠️ 代理拉取新闻源异常 ({source_url}): {e}")
             
     return items[:3]
 
