@@ -23,6 +23,7 @@ from core.integrations.sync_outbox import SyncOutbox
 from core.integrations.reconcile import reconcile_pending
 from core.runtime import config
 from services.communications import chat_reader
+from services.finance import fund_advisor
 from services.planning import review_sync
 from services.communications.chat_analysis import analyze_and_reflect
 
@@ -80,6 +81,19 @@ class MockIntegrationTests(unittest.TestCase):
             items = global_news.get_world_news(opener=opener)
         self.assertEqual(items[0]["link"], "https://example.test/a")
         self.assertEqual(opener.calls[0][0], "https://rss.test/feed")
+
+    def test_global_market_quote_uses_percentage_field(self):
+        opener = FakeOpener(
+            b'var hq_str_gb_$aapl="Apple,190.50,1.25,0.66,189.25,191.00";'
+        )
+        with mock.patch.object(
+            fund_advisor.urllib.request,
+            "build_opener",
+            return_value=opener,
+        ):
+            quotes = fund_advisor.fetch_realtime_quotes(["gb_$aapl"])
+        self.assertEqual(quotes["gb_$aapl"]["price"], 190.50)
+        self.assertEqual(quotes["gb_$aapl"]["change_pct"], 0.66)
 
     def test_agent_provider_is_mockable_at_single_conversation_boundary(self):
         with mock.patch.object(
