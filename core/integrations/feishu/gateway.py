@@ -23,7 +23,7 @@ class FeishuGateway:
         The local record is written only after the provider acknowledges
         success, so ordinary failed requests remain retryable.
         """
-        sync_outbox.begin(
+        attempt_owner = sync_outbox.begin(
             key,
             "feishu.card",
             {"idempotency_key": key, "card": card},
@@ -34,10 +34,15 @@ class FeishuGateway:
                 lambda: self.client.send_card(card),
                 success=lambda result: result is True,
             )
-            sync_outbox.finish(key, bool(sent))
+            sync_outbox.finish(key, bool(sent), lease_owner=attempt_owner)
             return bool(sent)
         except Exception as exc:
-            sync_outbox.finish(key, False, str(exc))
+            sync_outbox.finish(
+                key,
+                False,
+                str(exc),
+                lease_owner=attempt_owner,
+            )
             raise
 
     def reply_card(self, message_id: str, card: dict) -> bool:

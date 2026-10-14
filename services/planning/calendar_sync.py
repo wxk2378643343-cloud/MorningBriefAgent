@@ -18,7 +18,7 @@ def sync_plan_to_calendar(plan_data: dict[str, Any], gateway) -> int:
         key = idempotency.make_key(
             "feishu-calendar", plan.date, slot.name, slot.start, slot.end, slot.summary
         )
-        sync_outbox.begin(
+        attempt_owner = sync_outbox.begin(
             key,
             "feishu.calendar",
             {
@@ -49,10 +49,19 @@ def sync_plan_to_calendar(plan_data: dict[str, Any], gateway) -> int:
                 ),
                 success=lambda value: bool(value and value[0]),
             )
-            sync_outbox.finish(key, bool(result and result[0]))
+            sync_outbox.finish(
+                key,
+                bool(result and result[0]),
+                lease_owner=attempt_owner,
+            )
             if result and result[0]:
                 written_count += 1
         except Exception as exc:
-            sync_outbox.finish(key, False, str(exc))
+            sync_outbox.finish(
+                key,
+                False,
+                str(exc),
+                lease_owner=attempt_owner,
+            )
             continue
     return written_count

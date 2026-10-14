@@ -456,7 +456,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\register_windows_tasks.ps1
 ```
 
-注册脚本会使用当前激活的 Python，创建或更新下面的任务。它不会上传任务配置，也不会把 `.env` 内容写入任务参数。
+注册脚本会使用当前激活的 Python 创建或更新下面的任务；登录时启动的机器人使用同一解释器目录下的 `pythonw.exe`，避免登录时闪现控制台窗口。若该目录缺少 `pythonw.exe`，脚本会停止并提示修复 Python 环境，而不会切换到其他 Python 安装。它不会上传任务配置，也不会把 `.env` 内容写入任务参数。
 
 默认任务如下：
 

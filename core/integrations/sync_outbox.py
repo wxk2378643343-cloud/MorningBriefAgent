@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import closing
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 try:
@@ -41,6 +42,8 @@ class SyncOutbox:
                 attempts INTEGER NOT NULL DEFAULT 0,
                 last_error TEXT,
                 next_retry_at TEXT,
+                lease_owner TEXT,
+                lease_until TEXT,
                 updated_at TEXT NOT NULL
             )
             """
@@ -51,52 +54,124 @@ class SyncOutbox:
         }
         if "next_retry_at" not in columns:
             connection.execute("ALTER TABLE sync_outbox ADD COLUMN next_retry_at TEXT")
+        if "lease_owner" not in columns:
+            connection.execute("ALTER TABLE sync_outbox ADD COLUMN lease_owner TEXT")
+        if "lease_until" not in columns:
+            connection.execute("ALTER TABLE sync_outbox ADD COLUMN lease_until TEXT")
         return connection
 
     def _ensure_schema(self):
         with closing(self._connect()) as connection:
             connection.commit()
 
-    def begin(self, key: str, kind: str, payload: dict[str, Any]) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+    def begin(
+        self,
+        key: str,
+        kind: str,
+        payload: dict[str, Any],
+        *,
+        lease_seconds: int | None = None,
+    ) -> str:
+        """Record and lease one immediate delivery attempt."""
+        owner = uuid.uuid4().hex
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        lease_until = (
+            now_dt + timedelta(
+                seconds=max(
+                    1,
+                    config.OUTBOX_LEASE_SECONDS
+                    if lease_seconds is None else lease_seconds,
+                )
+            )
+        ).isoformat()
         with closing(self._connect()) as connection:
             connection.execute(
                 """
-                INSERT INTO sync_outbox(key, kind, payload_json, status, attempts, updated_at)
-                VALUES (?, ?, ?, 'pending', 1, ?)
+                INSERT INTO sync_outbox(
+                    key, kind, payload_json, status, attempts,
+                    lease_owner, lease_until, updated_at
+                )
+                VALUES (?, ?, ?, 'inflight', 1, ?, ?, ?)
                 ON CONFLICT(key) DO UPDATE SET
+                    kind = excluded.kind,
+                    payload_json = excluded.payload_json,
                     status = CASE
                         WHEN sync_outbox.status = 'succeeded' THEN 'succeeded'
-                        ELSE 'pending'
+                        ELSE 'inflight'
                     END,
-                    attempts = sync_outbox.attempts + 1,
+                    attempts = CASE
+                        WHEN sync_outbox.status = 'succeeded'
+                            THEN sync_outbox.attempts
+                        ELSE sync_outbox.attempts + 1
+                    END,
                     last_error = NULL,
                     next_retry_at = NULL,
+                    lease_owner = CASE
+                        WHEN sync_outbox.status = 'succeeded'
+                            THEN NULL
+                        ELSE excluded.lease_owner
+                    END,
+                    lease_until = CASE
+                        WHEN sync_outbox.status = 'succeeded'
+                            THEN NULL
+                        ELSE excluded.lease_until
+                    END,
                     updated_at = excluded.updated_at
                 """,
-                (key, kind, json.dumps(payload, ensure_ascii=False), now),
+                (
+                    key,
+                    kind,
+                    json.dumps(payload, ensure_ascii=False),
+                    owner,
+                    lease_until,
+                    now,
+                ),
             )
             connection.commit()
+        return owner
 
-    def finish(self, key: str, success: bool, error: str = "") -> None:
+    def finish(
+        self,
+        key: str,
+        success: bool,
+        error: str = "",
+        *,
+        lease_owner: str | None = None,
+    ) -> bool:
+        """Finish a leased attempt; stale workers cannot overwrite new work."""
         with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT status, attempts, lease_owner FROM sync_outbox WHERE key = ?",
+                (key,),
+            ).fetchone()
+            if not row:
+                connection.rollback()
+                return False
+            current_status, attempts, current_owner = row
+            if success and current_status == "succeeded":
+                connection.commit()
+                return True
+            if lease_owner and current_owner != lease_owner:
+                connection.rollback()
+                return False
+
             if success:
-                connection.execute(
+                cursor = connection.execute(
                     """
                     UPDATE sync_outbox
                     SET status = 'succeeded', last_error = NULL,
-                        next_retry_at = NULL, updated_at = ?
+                        next_retry_at = NULL, lease_owner = NULL,
+                        lease_until = NULL, updated_at = ?
                     WHERE key = ?
                     """,
                     (datetime.now(timezone.utc).isoformat(), key),
                 )
                 connection.commit()
-                return
+                return cursor.rowcount == 1
 
-            row = connection.execute(
-                "SELECT attempts FROM sync_outbox WHERE key = ?", (key,)
-            ).fetchone()
-            attempts = int(row[0]) if row else 1
+            attempts = int(attempts)
             max_attempts = max(1, config.OUTBOX_MAX_ATTEMPTS)
             status = "dead_letter" if attempts >= max_attempts else "failed"
             delays = config.OUTBOX_RETRY_DELAYS_SECONDS or (300,)
@@ -110,6 +185,7 @@ class SyncOutbox:
                 """
                 UPDATE sync_outbox
                 SET status = ?, last_error = ?, next_retry_at = ?, updated_at = ?
+                    , lease_owner = NULL, lease_until = NULL
                 WHERE key = ?
                 """,
                 (
@@ -124,6 +200,81 @@ class SyncOutbox:
                 ),
             )
             connection.commit()
+            return True
+
+    def claim_due(
+        self,
+        limit: int = 100,
+        *,
+        lease_seconds: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Atomically lease due records and increment their real attempt count."""
+        owner = uuid.uuid4().hex
+        now_dt = datetime.now(timezone.utc)
+        now = now_dt.isoformat()
+        lease_until = (
+            now_dt + timedelta(
+                seconds=max(
+                    1,
+                    config.OUTBOX_LEASE_SECONDS
+                    if lease_seconds is None else lease_seconds,
+                )
+            )
+        ).isoformat()
+        connection = self._connect()
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+            rows = connection.execute(
+                """
+                SELECT key, kind, payload_json, status, attempts, last_error,
+                       next_retry_at, updated_at
+                FROM sync_outbox
+                WHERE (
+                    status IN ('pending', 'failed')
+                    AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ) OR (
+                    status = 'inflight'
+                    AND lease_until IS NOT NULL
+                    AND lease_until <= ?
+                )
+                ORDER BY updated_at ASC
+                LIMIT ?
+                """,
+                (now, now, limit),
+            ).fetchall()
+            keys = [row[0] for row in rows]
+            for key in keys:
+                connection.execute(
+                    """
+                    UPDATE sync_outbox
+                    SET status = 'inflight', attempts = attempts + 1,
+                        lease_owner = ?, lease_until = ?, updated_at = ?
+                    WHERE key = ?
+                    """,
+                    (owner, lease_until, now, key),
+                )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+        return [
+            {
+                "key": row[0],
+                "kind": row[1],
+                "payload": json.loads(row[2]),
+                "status": "inflight",
+                "attempts": int(row[4]) + 1,
+                "last_error": row[5],
+                "next_retry_at": row[6],
+                "updated_at": now,
+                "lease_owner": owner,
+                "lease_until": lease_until,
+            }
+            for row in rows
+        ]
 
     def pending(self, limit: int = 100) -> list[dict[str, Any]]:
         now = datetime.now(timezone.utc).isoformat()
@@ -133,12 +284,18 @@ class SyncOutbox:
                 SELECT key, kind, payload_json, status, attempts, last_error,
                        next_retry_at, updated_at
                 FROM sync_outbox
-                WHERE status IN ('pending', 'failed')
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                WHERE (
+                    status IN ('pending', 'failed')
+                    AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ) OR (
+                    status = 'inflight'
+                    AND lease_until IS NOT NULL
+                    AND lease_until <= ?
+                )
                 ORDER BY updated_at ASC
                 LIMIT ?
                 """,
-                (now, limit),
+                (now, now, limit),
             ).fetchall()
         return [
             {

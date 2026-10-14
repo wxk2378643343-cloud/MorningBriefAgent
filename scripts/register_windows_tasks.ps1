@@ -2,6 +2,10 @@ $ErrorActionPreference = "Stop"
 
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $pythonPath = (Get-Command python -ErrorAction Stop).Source
+$pythonwPath = Join-Path (Split-Path -Parent $pythonPath) "pythonw.exe"
+if (-not (Test-Path -LiteralPath $pythonwPath -PathType Leaf)) {
+    throw "pythonw.exe was not found next to the active interpreter: $pythonPath"
+}
 $currentUser = "$env:USERDOMAIN\$env:USERNAME"
 
 $principal = New-ScheduledTaskPrincipal `
@@ -48,7 +52,7 @@ function Register-LogonWorkflow {
     )
 
     $action = New-ScheduledTaskAction `
-        -Execute $pythonPath `
+        -Execute $pythonwPath `
         -Argument $Arguments `
         -WorkingDirectory $projectRoot
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME

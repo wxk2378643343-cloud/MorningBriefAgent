@@ -15,6 +15,7 @@ import re
 import time
 import datetime
 import logging
+from logging.handlers import RotatingFileHandler
 import ctypes
 from typing import Dict, Any, List, Optional
 
@@ -43,7 +44,8 @@ IMAGE_DIR = os.path.join(PROJECT_ROOT, "received_images")
 os.makedirs(IMAGE_DIR, exist_ok=True)
 
 # Ensure stdout/stderr are valid streams (crucial for pythonw.exe & silent daemon)
-if sys.stdout is None:
+WINDOWLESS = sys.stdout is None
+if WINDOWLESS:
     sys.stdout = open(LOG_FILE, "a", encoding="utf-8", buffering=1)
 elif hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -53,13 +55,28 @@ if sys.stderr is None:
 elif hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-handlers = [logging.FileHandler(LOG_FILE, encoding="utf-8"), logging.StreamHandler(sys.stdout)]
+from core.runtime.observability import SensitiveDataFilter
+
+log_filter = SensitiveDataFilter()
+file_handler = RotatingFileHandler(
+    LOG_FILE,
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+    encoding="utf-8",
+)
+file_handler.addFilter(log_filter)
+handlers = [file_handler]
+if not WINDOWLESS:
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.addFilter(log_filter)
+    handlers.append(stream_handler)
 
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=handlers
+    handlers=handlers,
+    force=True,
 )
 logger = logging.getLogger("AGYFeishuBot")
 
@@ -309,11 +326,17 @@ def run_server():
         app_id=config.FEISHU_APP_ID,
         app_secret=config.FEISHU_APP_SECRET,
         event_handler=event_handler,
-        log_level=lark.LogLevel.INFO
+        log_level=lark.LogLevel.WARNING
     )
     
     logger.info("✅ 飞书 WebSocket 长连接网关已就绪！原生 AGY 智能体全面待命。")
     ws_client.start()
+
+
+def start_bot():
+    """Stable public entry point used by the CLI."""
+    return run_server()
+
 
 if __name__ == "__main__":
     run_server()

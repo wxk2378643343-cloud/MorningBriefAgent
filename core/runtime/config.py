@@ -82,6 +82,13 @@ OUTBOX_RETRY_DELAYS_SECONDS = tuple(
 OUTBOX_SUCCESS_RETENTION_DAYS = int(
     os.getenv("OUTBOX_SUCCESS_RETENTION_DAYS", "30")
 )
+OUTBOX_LEASE_SECONDS = int(os.getenv("OUTBOX_LEASE_SECONDS", "300"))
+IDEMPOTENCY_LOCK_TIMEOUT_SECONDS = int(
+    os.getenv("IDEMPOTENCY_LOCK_TIMEOUT_SECONDS", "120")
+)
+AGY_CONVERSATION_LOCK_TIMEOUT_SECONDS = int(
+    os.getenv("AGY_CONVERSATION_LOCK_TIMEOUT_SECONDS", "660")
+)
 
 # Feishu OpenAPI configuration. Credentials must never have source-code defaults.
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")

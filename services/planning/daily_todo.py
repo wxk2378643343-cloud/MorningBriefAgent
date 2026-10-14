@@ -185,7 +185,7 @@ def send_evening_review_prompt() -> bool:
         "💬 *如需调整时间或事项，可直接在飞书回复：*\n"
         "• “**把某个时间块改到 18:00**”\n"
         "• “**加上：明天要处理一件事**”\n"
-        "• “**没问题**” / “**确认**” ➔ 锁定排期，明早 06:00 正式写入飞书日历与任务列表！"
+        "• “**确认排期**” ➔ 锁定排期并立即写入飞书日历与任务列表！"
     )
 
     card = {
@@ -208,6 +208,7 @@ def send_evening_review_prompt() -> bool:
             }
         ]
     }
+    return push_feishu_card(card, f"🌙 明日待办与日程综合预审 ({tomorrow_str})")
 
 def get_weekly_archive_dir(archive_base: str, date_str: str) -> str:
     return todo_archive.get_weekly_archive_dir(archive_base, date_str)
@@ -546,6 +547,28 @@ def handle_todo_intent(user_text: str) -> Optional[str]:
                     if res:
                         return res
 
+    # 5. Evening Review Confirmation: 明确针对预审/排期的指令
+    # 严格限定专用词汇，避免截胡通用审批词（如“确认”、“好的”、“执行”）
+    explicit_review_confirm_keywords = [
+        "确认预排", "确认明日预审", "确认日程", "确认排期", "确认明日待办",
+        "锁定排期", "锁定日程", "锁定明日", "排期没问题", "日程可以", "按主线排期"
+    ]
+    if any(keyword in text for keyword in explicit_review_confirm_keywords):
+        now_hour = datetime.datetime.now().hour
+        if now_hour >= 21 or now_hour <= 2:
+            plan["confirmed"] = True
+            save_staged_plan(plan)
+            cal_count = sync_plan_to_calendar(plan)
+            task_count = sync_plan_to_feishu_tasks(plan)
+            return (
+                f"✅ 收到！已严格执行【双节点×双载体双写铁律】：\n"
+                f"1. 📅 **飞书官方日历**：已当场立即写入全部 {cal_count} 项敏捷时间盒日程（含15分钟提前强提醒闹钟）！\n"
+                f"2. 📋 **飞书官方任务**：已当场立即批量创建全部 {task_count} 项核心待办（可直接打勾）！\n"
+                f"3. 📁 **本地计划文件**：排期已正式锁定，下一次运行计划时将执行二次对账并写入配置路径。"
+            )
+
+    return None
+
 def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
     try:
         return calendar_sync.sync_plan_to_calendar(plan_data, feishu_gateway)
@@ -560,28 +583,14 @@ def sync_plan_to_feishu_tasks(plan_data: Dict[str, Any]) -> int:
         print(f"⚠️ 任务同步跳过，计划契约无效: {exc}")
         return 0
 
-    # 5. Evening Review Confirmation: 明确针对预审/排期的指令
-    # 严格限定专用词汇，避免截胡通用审批词（如“确认”、“好的”、“执行”）
-    explicit_review_confirm_keywords = [
-        "确认预排", "确认明日预审", "确认日程", "确认排期", "确认明日待办", 
-        "锁定排期", "锁定日程", "锁定明日", "排期没问题", "日程可以", "按主线排期"
-    ]
-    if any(k in text for k in explicit_review_confirm_keywords):
-        now_hour = datetime.datetime.now().hour
-        if now_hour >= 21 or now_hour <= 2:
-            plan["confirmed"] = True
-            save_staged_plan(plan)
-            # 严格贯彻双写铁律：晚间确认时必须当场立即双写飞书日历与飞书任务！
-            cal_count = sync_plan_to_calendar(plan)
-            task_count = sync_plan_to_feishu_tasks(plan)
-            return (
-                f"✅ 收到！已严格执行【双节点×双载体双写铁律】：\n"
-                f"1. 📅 **飞书官方日历**：已当场立即写入全部 {cal_count} 项敏捷时间盒日程（含15分钟提前强提醒闹钟）！\n"
-                f"2. 📋 **飞书官方任务**：已当场立即批量创建全部 {task_count} 项核心待办（可直接打勾）！\n"
-                f"3. 📁 **本地计划文件**：排期已正式锁定，下一次运行计划时将执行二次对账并写入配置路径。"
-            )
+def morning_routine() -> bool:
+    """Stable public entry point used by the CLI and Windows Task Scheduler."""
+    return generate_and_publish_morning_todo()
 
-    return None
+
+def evening_routine() -> bool:
+    """Stable public entry point used by the CLI and Windows Task Scheduler."""
+    return send_evening_review_prompt()
 
 if __name__ == "__main__":
     import argparse

@@ -48,6 +48,7 @@ data/*.json
 data/*.sqlite
 data/*.sqlite3
 data/*.db
+data/locks/
 !data/.gitkeep
 received_images/*
 !received_images/.gitkeep

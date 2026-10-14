@@ -4,11 +4,38 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import uuid
 from contextlib import contextmanager
 from typing import Callable, Iterator
 from functools import wraps
+
+
+_SENSITIVE_PATTERNS = (
+    re.compile(
+        r"(?i)(access_key|ticket|csrf_token|app_secret)=([^&\s]+)"
+    ),
+    re.compile(r"(?i)(authorization\s*[:=]\s*bearer\s+)([^\s,;]+)"),
+)
+
+
+def redact_sensitive_text(value: object) -> str:
+    """Redact known credential forms before they reach persistent logs."""
+    text = str(value)
+    for pattern in _SENSITIVE_PATTERNS:
+        if pattern.groups == 2:
+            text = pattern.sub(r"\1=<redacted>", text)
+    return text
+
+
+class SensitiveDataFilter(logging.Filter):
+    """Apply credential redaction to a fully rendered log record."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.msg = redact_sensitive_text(record.getMessage())
+        record.args = ()
+        return True
 
 
 def correlation_id() -> str:

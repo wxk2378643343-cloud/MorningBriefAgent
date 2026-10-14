@@ -34,12 +34,13 @@ def reconcile_pending(
     journal = outbox or sync_outbox
     provider = gateway or feishu_gateway
     store = idempotency_store or idempotency.store
-    records = journal.pending(limit)
+    records = journal.claim_due(limit)
     summary = {"examined": len(records), "recovered": 0, "failed": 0}
 
     for record in records:
         key = record["key"]
         payload = record.get("payload") or {}
+        lease_owner = record.get("lease_owner")
         try:
             kind = record["kind"]
             if kind == "feishu.card":
@@ -51,13 +52,15 @@ def reconcile_pending(
             elif kind == "feishu.task":
                 # Reuse the application service so its compatibility query
                 # can detect tasks created before a response was lost.
-                from services.planning.daily_todo import create_feishu_task
+                from services.planning.feishu_tasks import create_feishu_task
 
                 result = create_feishu_task(
                     summary=payload["summary"],
                     description=payload.get("description", ""),
                     due_timestamp=payload.get("due_timestamp"),
                     idempotency_key=key,
+                    gateway=provider,
+                    record_outbox=False,
                 )
             elif kind == "feishu.calendar":
                 result, _ = store.execute_once(
@@ -69,13 +72,28 @@ def reconcile_pending(
                 raise ValueError(f"unsupported outbox kind: {kind}")
 
             success = bool(result if kind != "feishu.calendar" else result and result[0])
-            journal.finish(key, success, "" if success else "provider returned failure")
+            journal.finish(
+                key,
+                success,
+                "" if success else "provider returned failure",
+                lease_owner=lease_owner,
+            )
             summary["recovered" if success else "failed"] += 1
         except (KeyError, TypeError, ValueError) as exc:
-            journal.finish(key, False, f"invalid replay payload: {exc}")
+            journal.finish(
+                key,
+                False,
+                f"invalid replay payload: {exc}",
+                lease_owner=lease_owner,
+            )
             summary["failed"] += 1
         except Exception as exc:
-            journal.finish(key, False, str(exc))
+            journal.finish(
+                key,
+                False,
+                str(exc),
+                lease_owner=lease_owner,
+            )
             summary["failed"] += 1
 
     summary["remaining"] = len(journal.pending())

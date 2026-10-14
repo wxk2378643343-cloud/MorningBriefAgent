@@ -38,6 +38,7 @@ def create_feishu_task(
     check_duplicate: bool = True,
     idempotency_key: str = "",
     gateway=None,
+    record_outbox: bool = True,
 ) -> Optional[dict]:
     """Create a task with local idempotency and provider-side duplicate guard."""
     summary = summary.strip()
@@ -86,17 +87,19 @@ def create_feishu_task(
             pass
 
     try:
+        attempt_owner = None
         if idempotency_key:
-            sync_outbox.begin(
-                idempotency_key,
-                "feishu.task",
-                {
-                    "idempotency_key": idempotency_key,
-                    "summary": summary,
-                    "description": description,
-                    "due_timestamp": due_timestamp,
-                },
-            )
+            if record_outbox:
+                attempt_owner = sync_outbox.begin(
+                    idempotency_key,
+                    "feishu.task",
+                    {
+                        "idempotency_key": idempotency_key,
+                        "summary": summary,
+                        "description": description,
+                        "due_timestamp": due_timestamp,
+                    },
+                )
             task_data, reused = idempotency.store.execute_once(
                 idempotency_key,
                     lambda: (gateway or feishu_gateway).create_task(
@@ -107,15 +110,25 @@ def create_feishu_task(
             if isinstance(task_data, dict) and reused:
                 task_data = dict(task_data)
                 task_data["reused"] = True
-            sync_outbox.finish(idempotency_key, bool(task_data))
+            if record_outbox:
+                sync_outbox.finish(
+                    idempotency_key,
+                    bool(task_data),
+                    lease_owner=attempt_owner,
+                )
         else:
             task_data = (gateway or feishu_gateway).create_task(
                 summary, description, due_timestamp
             )
         return task_data or None
     except Exception as exc:
-        if idempotency_key:
-            sync_outbox.finish(idempotency_key, False, str(exc))
+        if idempotency_key and record_outbox:
+            sync_outbox.finish(
+                idempotency_key,
+                False,
+                str(exc),
+                lease_owner=attempt_owner,
+            )
         print(f"⚠️ 创建飞书任务网络异常: {exc}")
         return None
 

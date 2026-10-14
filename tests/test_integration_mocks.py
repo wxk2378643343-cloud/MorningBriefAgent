@@ -1,17 +1,23 @@
 """Offline integration tests for provider boundaries."""
 
 import io
+import datetime
 import hashlib
 import json
 import sqlite3
+import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
+import main as cli
+from core.agent import agy_bridge
 from core.agent import provider as agent_provider
 from services.content import global_news
 from core.integrations.feishu import idempotency
@@ -22,10 +28,14 @@ from core.integrations.feishu.gateway import FeishuGateway
 from core.integrations.sync_outbox import SyncOutbox
 from core.integrations.reconcile import reconcile_pending
 from core.runtime import config
+from core.runtime.observability import redact_sensitive_text
 from services.communications import chat_reader
 from services.finance import fund_advisor
+from services.planning import calendar_sync as calendar_sync_service
+from services.planning import feishu_tasks as feishu_tasks_service
 from services.planning import review_sync
 from services.communications.chat_analysis import analyze_and_reflect
+from server import feishu_bot_server
 
 
 class FakeResponse:
@@ -69,6 +79,159 @@ class FakeHttpSession:
 
 
 class MockIntegrationTests(unittest.TestCase):
+    def test_log_redaction_removes_connection_credentials(self):
+        message = (
+            "connected to wss://example.test/ws?"
+            "access_key=secret-access&ticket=secret-ticket "
+            "Authorization: Bearer secret-token csrf_token=secret-csrf"
+        )
+        redacted = redact_sensitive_text(message)
+        for secret in (
+            "secret-access",
+            "secret-ticket",
+            "secret-token",
+            "secret-csrf",
+        ):
+            self.assertNotIn(secret, redacted)
+        self.assertGreaterEqual(redacted.count("<redacted>"), 4)
+
+    def test_shared_agy_conversation_is_serialized(self):
+        active = 0
+        maximum_active = 0
+        state_lock = threading.Lock()
+        start = threading.Barrier(2)
+
+        def fake_call(*_args):
+            nonlocal active, maximum_active
+            with state_lock:
+                active += 1
+                maximum_active = max(maximum_active, active)
+            time.sleep(0.05)
+            with state_lock:
+                active -= 1
+            return "ok"
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            agy_bridge.config, "PROJECT_ROOT", Path(tmp)
+        ), mock.patch.object(
+            agy_bridge, "_ask_native_agy_locked", side_effect=fake_call
+        ):
+            results = []
+
+            def worker():
+                start.wait()
+                results.append(agy_bridge.ask_native_agy("user", "prompt"))
+
+            threads = [threading.Thread(target=worker) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=3)
+
+        self.assertEqual(results, ["ok", "ok"])
+        self.assertEqual(maximum_active, 1)
+
+    def test_file_lock_serializes_separate_processes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            lock_path = Path(tmp) / "shared.lock"
+            events_path = Path(tmp) / "events.txt"
+            code = (
+                "import sys,time;"
+                "from pathlib import Path;"
+                "from core.runtime.locking import CrossProcessFileLock;"
+                "lock=Path(sys.argv[1]);events=Path(sys.argv[2]);"
+                "guard=CrossProcessFileLock(lock,timeout=5);"
+                "guard.acquire();"
+                "f=events.open('a',encoding='utf-8');"
+                "f.write('acquire\\n');f.close();"
+                "time.sleep(0.15);"
+                "f=events.open('a',encoding='utf-8');"
+                "f.write('release\\n');f.close();"
+                "guard.release()"
+            )
+            processes = [
+                subprocess.Popen(
+                    [sys.executable, "-c", code, str(lock_path), str(events_path)],
+                    cwd=ROOT,
+                )
+                for _ in range(2)
+            ]
+            for process in processes:
+                self.assertEqual(process.wait(timeout=5), 0)
+
+            self.assertEqual(
+                events_path.read_text(encoding="utf-8").splitlines(),
+                ["acquire", "release", "acquire", "release"],
+            )
+
+    def test_cli_runtime_entrypoints_delegate_to_public_services(self):
+        with mock.patch.object(
+            daily_todo_service, "morning_routine", return_value=True
+        ) as morning:
+            cli.run_todo_morning()
+        with mock.patch.object(
+            daily_todo_service, "evening_routine", return_value=True
+        ) as evening:
+            cli.run_todo_evening()
+        with mock.patch.object(
+            feishu_bot_server, "start_bot", return_value=None
+        ) as bot:
+            cli.run_bot()
+
+        morning.assert_called_once_with()
+        evening.assert_called_once_with()
+        bot.assert_called_once_with()
+
+    def test_evening_review_saves_plan_and_sends_card(self):
+        with mock.patch.object(
+            daily_todo_service, "extract_candidates_from_chat", return_value=["跟进事项"]
+        ), mock.patch.object(
+            daily_todo_service, "get_default_baseline_todos", return_value=[]
+        ), mock.patch.object(
+            daily_todo_service, "get_default_schedule_slots", return_value=[]
+        ), mock.patch.object(
+            daily_todo_service, "save_staged_plan"
+        ) as save_plan, mock.patch.object(
+            daily_todo_service, "push_feishu_card", return_value=True
+        ) as push_card:
+            self.assertTrue(daily_todo_service.evening_routine())
+
+        saved = save_plan.call_args.args[0]
+        self.assertEqual(saved["todos"], ["跟进事项"])
+        self.assertFalse(saved["confirmed"])
+        self.assertEqual(push_card.call_count, 1)
+
+    def test_evening_confirmation_branch_is_reachable(self):
+        class EveningDateTime(datetime.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 10, 14, 22, 0, 0, tzinfo=tz)
+
+        plan = {
+            "date": "2026-10-15",
+            "todos": ["跟进事项"],
+            "schedule_slots": [],
+            "confirmed": False,
+        }
+        with mock.patch.object(
+            daily_todo_service.datetime, "datetime", EveningDateTime
+        ), mock.patch.object(
+            daily_todo_service, "load_staged_plan", return_value=plan
+        ), mock.patch.object(
+            daily_todo_service, "save_staged_plan"
+        ) as save_plan, mock.patch.object(
+            daily_todo_service, "sync_plan_to_calendar", return_value=2
+        ) as sync_calendar, mock.patch.object(
+            daily_todo_service, "sync_plan_to_feishu_tasks", return_value=1
+        ) as sync_tasks:
+            reply = daily_todo_service.handle_todo_intent("确认排期")
+
+        self.assertIn("飞书官方日历", reply)
+        self.assertTrue(plan["confirmed"])
+        save_plan.assert_called_once_with(plan)
+        sync_calendar.assert_called_once_with(plan)
+        sync_tasks.assert_called_once_with(plan)
+
     def test_rss_source_is_configured_and_parsed_without_network(self):
         rss = b"""<rss><channel><item>
         <title>Agent release</title><link>https://example.test/a</link>
@@ -172,6 +335,32 @@ class MockIntegrationTests(unittest.TestCase):
             self.assertTrue(reused_again)
             self.assertEqual(calls, ["called"])
 
+    def test_execute_once_deduplicates_concurrent_workers(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            calls = []
+            start = threading.Barrier(2)
+            results = []
+
+            def operation():
+                calls.append("called")
+                time.sleep(0.05)
+                return {"provider_id": "one"}
+
+            def worker():
+                start.wait()
+                results.append(store.execute_once("same", operation))
+
+            threads = [threading.Thread(target=worker) for _ in range(2)]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join(timeout=3)
+
+            self.assertEqual(calls, ["called"])
+            self.assertEqual(len(results), 2)
+            self.assertEqual(sorted(reused for _, reused in results), [False, True])
+
     def test_task_sync_reuses_stable_idempotency_key(self):
         class FakeTasks:
             def __init__(self):
@@ -186,9 +375,11 @@ class MockIntegrationTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             fake_store = idempotency.IdempotencyStore(Path(tmp) / "keys.json")
+            fake_outbox = SyncOutbox(fake_store)
             fake_tasks = FakeTasks()
             with mock.patch.object(daily_todo_service, "feishu_gateway", fake_tasks), \
-                 mock.patch.object(idempotency, "store", fake_store):
+                 mock.patch.object(idempotency, "store", fake_store), \
+                 mock.patch.object(feishu_tasks_service, "sync_outbox", fake_outbox):
                 plan = {"date": "2026-10-14", "todos": ["写测试"]}
                 self.assertEqual(daily_todo_service.sync_plan_to_feishu_tasks(plan), 1)
                 self.assertEqual(daily_todo_service.sync_plan_to_feishu_tasks(plan), 1)
@@ -252,6 +443,85 @@ class MockIntegrationTests(unittest.TestCase):
                 outbox.finish("retry-key", False, "second failure")
                 self.assertEqual(outbox.pending(), [])
                 self.assertEqual(len(outbox.dead_letter()), 1)
+
+    def test_reconcile_counts_card_replays_until_dead_letter(self):
+        class FailingClient:
+            def __init__(self):
+                self.calls = 0
+
+            def send_card(self, _card):
+                self.calls += 1
+                return False
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            outbox = SyncOutbox(store)
+            key = "always-failing-card"
+            client = FailingClient()
+            gateway = FeishuGateway(client)
+
+            with mock.patch.object(config, "OUTBOX_MAX_ATTEMPTS", 3), \
+                 mock.patch.object(config, "OUTBOX_RETRY_DELAYS_SECONDS", (0,)):
+                owner = outbox.begin(
+                    key,
+                    "feishu.card",
+                    {"card": {"elements": []}},
+                )
+                outbox.finish(
+                    key,
+                    False,
+                    "initial failure",
+                    lease_owner=owner,
+                )
+                first = reconcile_pending(
+                    outbox=outbox, gateway=gateway, idempotency_store=store
+                )
+                second = reconcile_pending(
+                    outbox=outbox, gateway=gateway, idempotency_store=store
+                )
+
+            self.assertEqual(first["failed"], 1)
+            self.assertEqual(second["failed"], 1)
+            self.assertEqual(client.calls, 2)
+            self.assertEqual(outbox.pending(), [])
+            self.assertEqual(len(outbox.dead_letter()), 1)
+
+    def test_outbox_claim_is_exclusive_until_lease_expires(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            outbox = SyncOutbox(store)
+            with mock.patch.object(config, "OUTBOX_RETRY_DELAYS_SECONDS", (0,)):
+                owner = outbox.begin("leased", "feishu.card", {"card": {}})
+                outbox.finish("leased", False, "retry", lease_owner=owner)
+
+            first = outbox.claim_due(lease_seconds=30)
+            second = outbox.claim_due(lease_seconds=30)
+
+            self.assertEqual(len(first), 1)
+            self.assertEqual(second, [])
+
+    def test_stale_outbox_worker_cannot_overwrite_new_lease(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            outbox = SyncOutbox(store)
+            old_owner = outbox.begin("stale", "feishu.card", {"card": {}})
+            with closing(sqlite3.connect(str(store.path))) as connection:
+                connection.execute(
+                    "UPDATE sync_outbox SET lease_until = ? WHERE key = ?",
+                    ("2000-01-01T00:00:00+00:00", "stale"),
+                )
+                connection.commit()
+
+            claimed = outbox.claim_due(lease_seconds=30)
+            self.assertEqual(len(claimed), 1)
+            new_owner = claimed[0]["lease_owner"]
+            self.assertNotEqual(old_owner, new_owner)
+            self.assertFalse(
+                outbox.finish("stale", True, lease_owner=old_owner)
+            )
+            self.assertTrue(
+                outbox.finish("stale", True, lease_owner=new_owner)
+            )
 
     def test_outbox_purges_only_old_succeeded_records(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -341,8 +611,10 @@ class MockIntegrationTests(unittest.TestCase):
         calendar = FakeCalendar()
         with tempfile.TemporaryDirectory() as tmp:
             fake_store = idempotency.IdempotencyStore(Path(tmp) / "keys.json")
+            fake_outbox = SyncOutbox(fake_store)
             with mock.patch.object(daily_todo_service.feishu_calendar, "calendar_mgr", calendar), \
-                 mock.patch.object(idempotency, "store", fake_store):
+                 mock.patch.object(idempotency, "store", fake_store), \
+                 mock.patch.object(calendar_sync_service, "sync_outbox", fake_outbox):
                 plan = {
                     "date": "2026-10-14",
                     "schedule_slots": [{

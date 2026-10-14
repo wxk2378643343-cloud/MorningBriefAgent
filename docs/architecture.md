@@ -46,12 +46,14 @@
 
 ## 当前架构决策
 
-- 交互式 Feishu 对话暂时继续使用一个 AGY 会话，保持现有体验。
+- 交互式 Feishu 对话暂时继续使用一个 AGY 会话，保持现有体验；所有进程通过同一会话锁串行访问，防止 transcript 串答。
 - 批处理 Agent 调用通过 `agent_provider.py` 统一。
 - 新闻源、邮件目录、计划文件和归档目录均由环境变量提供。
 - 日历同步不再按天删除全部事件，只按稳定身份复用计划自身的事件。
 - `RUN_LIVE_INTEGRATION=1` 才会启用只读真实飞书集成检查，默认测试保持离线。
 - 旧版 JSON 幂等记录启动时自动迁移到 SQLite，不删除原始文件。
-- 所有外部写入统一经过 `IdempotencyStore.execute_once`，不在业务服务重复实现“检查、执行、记录”。
+- 所有外部写入统一经过 `IdempotencyStore.execute_once`，同一幂等 key 使用跨进程锁串行执行，不在业务服务重复实现“检查、执行、记录”。
+- Outbox 对账先通过 SQLite 短事务原子领取记录，并使用带过期时间的 lease 恢复崩溃中的 worker；每次真实重放都会增加 attempts。
+- 持久日志统一脱敏并轮转，第三方 SDK 不以 INFO 级别记录包含临时凭证的连接 URL。
 - 规划同步拆分为 `task_sync.py` 和 `calendar_sync.py`，Server 回复与图片流程位于 `server/replies.py`。
 - 所有内部代码统一使用包路径，避免同一实现被不同平铺模块名重复加载。

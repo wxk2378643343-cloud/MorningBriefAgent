@@ -9,17 +9,21 @@ Zero external API key needed - pure native AGY intelligence!
 import os
 import sys
 import json
+import hashlib
 import time
 import subprocess
 import logging
+import uuid
 from typing import Optional, Tuple
 
 logger = logging.getLogger("AGYBridge")
 
 try:
     from ..runtime import config
+    from ..runtime.locking import CrossProcessFileLock, LockTimeoutError
 except ImportError:
     from core.runtime import config
+    from core.runtime.locking import CrossProcessFileLock, LockTimeoutError
 
 IS_WSL = sys.platform != "win32" and os.path.exists("/mnt/c")
 AGENTAPI_EXE = config.AGENTAPI_EXE
@@ -202,10 +206,14 @@ FEISHU_FORMATTING_RULE = """【飞书移动端卡片专属排版铁律与安全�
 4. 语言精炼聚焦，突出核心要点与行动项，禁止空泛废话。
 5. 【宿主网关保护铁律】：严禁在会话中执行杀掉或重启 feishu_bot_server.py 的命令（如 Stop-Process 等），必须保持宿主服务持续在线以正常回传消息！"""
 
-def ask_native_agy(user_open_id: str, prompt: str, context: str = "") -> str:
+def _ask_native_agy_locked(
+    user_open_id: str,
+    prompt: str,
+    context: str,
+    request_id: str,
+) -> str:
     """
-    Send prompt to local native AGY via agentapi using strictly FIXED_CONVERSATION_ID.
-    Permanently locks 1 single conversation in IDE sidebar - 0 duplicate conversations!
+    Send one prompt while the caller holds the fixed-conversation lock.
     """
     conv_id = FIXED_CONVERSATION_ID
     if not AGENTAPI_EXE or not BRAIN_DIR or not conv_id:
@@ -223,7 +231,13 @@ def ask_native_agy(user_open_id: str, prompt: str, context: str = "") -> str:
     _, highest_step = get_latest_response_from_transcript(transcript_file, min_step=0)
     
     try:
-        logger.info(f"🔄 正在向唯一永久会话 ({conv_id}) 发送新指令 (起始 step: {highest_step + 1})...")
+        logger.info(
+            "🔄 正在向唯一永久会话 (%s) 发送新指令 "
+            "(request_id=%s, 起始 step=%s)...",
+            conv_id,
+            request_id,
+            highest_step + 1,
+        )
         cmd = [AGENTAPI_EXE, "agentapi", "send-message", conv_id, full_prompt]
         
         live_env = get_live_agy_env()
@@ -267,6 +281,38 @@ def ask_native_agy(user_open_id: str, prompt: str, context: str = "") -> str:
     except Exception as e:
         logger.error(f"调用 AGY Bridge 发生异常: {e}", exc_info=True)
         return f"❌ AGY 智能体交互异常: {str(e)}"
+
+
+def ask_native_agy(user_open_id: str, prompt: str, context: str = "") -> str:
+    """Serialize access to the one shared AGY conversation across processes."""
+    conv_id = FIXED_CONVERSATION_ID
+    if not conv_id:
+        return "❌ AGY 未配置：请检查 AGY_CONVERSATION_ID。"
+
+    request_id = uuid.uuid4().hex[:12]
+    lock_name = hashlib.sha256(conv_id.encode("utf-8")).hexdigest()[:24]
+    lock_path = (
+        config.PROJECT_ROOT / "data" / "locks" / f"agy-conversation-{lock_name}.lock"
+    )
+    try:
+        with CrossProcessFileLock(
+            lock_path,
+            timeout=config.AGY_CONVERSATION_LOCK_TIMEOUT_SECONDS,
+        ):
+            return _ask_native_agy_locked(
+                user_open_id,
+                prompt,
+                context,
+                request_id,
+            )
+    except LockTimeoutError:
+        logger.error(
+            "AGY conversation lock timeout request_id=%s conversation=%s",
+            request_id,
+            conv_id,
+        )
+        return "❌ AGY 当前请求队列繁忙，请稍后重试。"
+
 
 if __name__ == "__main__":
     test_ans = ask_native_agy("test_user", "你好，请确认你是否是原生 AGY 智能体？")

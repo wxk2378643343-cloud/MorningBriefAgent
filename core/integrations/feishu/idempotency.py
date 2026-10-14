@@ -14,8 +14,10 @@ from typing import Any, Optional
 
 try:
     from ...runtime import config
+    from ...runtime.locking import CrossProcessFileLock
 except ImportError:
     from core.runtime import config
+    from core.runtime.locking import CrossProcessFileLock
 
 
 def make_key(namespace: str, *parts: object) -> str:
@@ -122,25 +124,36 @@ class IdempotencyStore:
         reused, which centralizes the same check/execute/save pattern for
         tasks, calendar events, and cards.
         """
-        existing = self.get(key)
-        if isinstance(existing, dict) and existing.get("status") == "succeeded":
-            return existing.get("result"), True
+        lock_name = hashlib.sha256(key.encode("utf-8")).hexdigest()
+        lock_path = self.path.parent / "locks" / f"idempotency-{lock_name}.lock"
+        with CrossProcessFileLock(
+            lock_path,
+            timeout=config.IDEMPOTENCY_LOCK_TIMEOUT_SECONDS,
+        ):
+            # Re-read only after acquiring the cross-process key lock. Another
+            # worker may have completed the operation while this caller waited.
+            existing = self.get(key)
+            if isinstance(existing, dict) and existing.get("status") == "succeeded":
+                return existing.get("result"), True
 
-        self.put(key, {"status": "pending", "attempts": self._attempts(existing) + 1})
-        try:
-            result = operation()
-            if success(result):
-                self.put(key, {"status": "succeeded", "result": result})
-            else:
-                self.put(key, {"status": "failed", "result": result})
-            return result, False
-        except Exception as exc:
-            self.put(key, {
-                "status": "failed",
-                "error": type(exc).__name__,
-                "message": str(exc)[:300],
-            })
-            raise
+            self.put(
+                key,
+                {"status": "pending", "attempts": self._attempts(existing) + 1},
+            )
+            try:
+                result = operation()
+                if success(result):
+                    self.put(key, {"status": "succeeded", "result": result})
+                else:
+                    self.put(key, {"status": "failed", "result": result})
+                return result, False
+            except Exception as exc:
+                self.put(key, {
+                    "status": "failed",
+                    "error": type(exc).__name__,
+                    "message": str(exc)[:300],
+                })
+                raise
 
     @staticmethod
     def _attempts(value: Any) -> int:
