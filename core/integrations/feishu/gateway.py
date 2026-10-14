@@ -29,6 +29,15 @@ class FeishuGateway:
         )
         return bool(sent)
 
+    def reply_card(self, message_id: str, card: dict) -> bool:
+        return self.client.reply_message(message_id, card, "interactive")
+
+    def reply_text(self, message_id: str, text: str) -> bool:
+        return self.client.reply_message(message_id, {"text": text}, "text")
+
+    def download_image(self, message_id: str, image_key: str):
+        return self.client.download_image(message_id, image_key)
+
     # Task and calendar operations intentionally stay behind this facade so
     # services do not know which provider adapter implements them.
     def list_tasks(self, page_size: int = 50) -> list[dict[str, Any]]:

@@ -15,6 +15,7 @@ from core.integrations.feishu import idempotency
 from services.planning import daily_todo as daily_todo_service
 from core.agent.contracts import AgentPlan
 from core.integrations.feishu.task_gateway import FeishuTaskGateway
+from core.integrations.feishu.gateway import FeishuGateway
 
 
 class FakeResponse:
@@ -147,6 +148,14 @@ class MockIntegrationTests(unittest.TestCase):
         result = gateway.create("mock task", "description")
         self.assertEqual(result["id"], "task-2")
         self.assertEqual(gateway.list(), [])
+
+    def test_feishu_gateway_routes_thread_replies_to_client(self):
+        class FakeClient:
+            def reply_message(self, message_id, content, msg_type):
+                return message_id == "msg-1" and content == {"text": "ok"} and msg_type == "text"
+
+        gateway = FeishuGateway(FakeClient())
+        self.assertTrue(gateway.reply_text("msg-1", "ok"))
 
     def test_calendar_sync_does_not_delete_unrelated_events(self):
         class FakeCalendar:

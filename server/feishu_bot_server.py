@@ -14,7 +14,6 @@ import json
 import re
 import time
 import datetime
-import urllib.request
 import logging
 import ctypes
 from typing import Dict, Any, List, Optional
@@ -77,6 +76,7 @@ from core.integrations.feishu import calendar as feishu_calendar
 from core.agent import agy_bridge
 from services.planning import daily_todo as daily_todo_service
 from core.agent import context as agent_context
+from core.integrations.feishu.gateway import feishu_gateway
 
 VAULT_ROOT = config.VAULT_ROOT
 
@@ -87,30 +87,12 @@ WORKER_POOL = ThreadPoolExecutor(max_workers=3, thread_name_prefix="AGYWorker")
 PROCESSED_MSG_IDS = set()
 PROCESSED_MSG_QUEUE = deque(maxlen=2000)
 
-def get_tenant_token() -> str:
-    """Fetch Feishu tenant token for sending messages."""
-    url = "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal"
-    payload = json.dumps({"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET}).encode("utf-8")
-    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json; charset=utf-8"})
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        with opener.open(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("tenant_access_token", "")
-    except Exception as e:
-        logger.error(f"获取 Feishu Token 异常: {e}")
-        return ""
-
 def download_feishu_image(message_id: str, image_key: str) -> Optional[str]:
     """Download image binary from Feishu Open API and save locally."""
-    token = get_tenant_token()
-    if not token:
-        logger.error("Token 为空，无法下载飞书图片")
+    image_data = feishu_gateway.download_image(message_id, image_key)
+    if not image_data:
+        logger.error("图片资源为空，无法下载飞书图片")
         return None
-        
-    url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/resources/{image_key}?type=image"
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
     
     timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_key = re.sub(r'[^a-zA-Z0-9_-]', '_', image_key[-16:])
@@ -118,14 +100,12 @@ def download_feishu_image(message_id: str, image_key: str) -> Optional[str]:
     filepath = os.path.join(IMAGE_DIR, filename)
     
     try:
-        with opener.open(req, timeout=20) as resp:
-            data = resp.read()
-            with open(filepath, "wb") as f:
-                f.write(data)
-            logger.info(f"📸 [飞书图片下载成功] 已存至: {filepath} (大小: {len(data)} 字节)")
-            return filepath
-    except Exception as e:
-        logger.error(f"❌ 下载飞书图片失败 (MsgID: {message_id}, key: {image_key}): {e}")
+        with open(filepath, "wb") as f:
+            f.write(image_data)
+        logger.info(f"📸 [飞书图片下载成功] 已存至: {filepath} (大小: {len(image_data)} 字节)")
+        return filepath
+    except OSError as exc:
+        logger.error(f"❌ 保存飞书图片失败 (MsgID: {message_id}, key: {image_key}): {exc}")
         return None
 
 # User recent image buffer: user_open_id -> list of {"path": str, "time": float, "msg_id": str}
@@ -186,55 +166,22 @@ def build_reply_card(content: str, title: str = "🤖 AGY 智能协同助手", t
 
 def reply_feishu_message(message_id: str, reply_text: str, title: str = "🤖 AGY 智能协同助手", template: str = "blue"):
     """Reply to a message in Feishu thread using high-aesthetic Interactive Card."""
-    token = get_tenant_token()
-    if not token:
-        logger.error("Token 为空，无法回复消息")
-        return
-        
-    url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/reply"
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    
     # 1. Primary: Send Interactive Card
     card_obj = build_reply_card(reply_text, title=title, template=template)
-    body = {
-        "content": json.dumps(card_obj, ensure_ascii=False),
-        "msg_type": "interactive"
-    }
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode("utf-8"),
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
-    )
-    try:
-        with opener.open(req, timeout=15) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
-            if res.get("code") == 0:
-                logger.info(f"✅ 成功向飞书回复精美交互卡片 (MsgID: {message_id})")
-                return
-            else:
-                logger.warning(f"⚠️ 卡片回复响应异常 (code={res.get('code')}, msg={res.get('msg')})，尝试降级纯文本...")
-    except Exception as e:
-        logger.warning(f"⚠️ 卡片回复网络失败: {e}，尝试降级纯文本...")
+    if feishu_gateway.reply_card(message_id, card_obj):
+        logger.info(f"✅ 成功向飞书回复精美交互卡片 (MsgID: {message_id})")
+        return True
+    logger.warning("⚠️ 卡片回复失败，尝试降级纯文本...")
 
     # 2. Fallback: Plain text fallback to guarantee message delivery
     try:
-        fb_body = {
-            "content": json.dumps({"text": reply_text}, ensure_ascii=False),
-            "msg_type": "text"
-        }
-        fb_req = urllib.request.Request(
-            url,
-            data=json.dumps(fb_body).encode("utf-8"),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
-        )
-        with opener.open(fb_req, timeout=10) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
-            if res.get("code") == 0:
-                logger.info(f"✅ 纯文本降级回复成功 (MsgID: {message_id})")
-            else:
-                logger.error(f"❌ 降级回复失败: {res.get('msg')}")
+        if feishu_gateway.reply_text(message_id, reply_text):
+            logger.info(f"✅ 纯文本降级回复成功 (MsgID: {message_id})")
+            return True
+        logger.error("❌ 降级回复失败")
     except Exception as ex:
         logger.error(f"❌ 回复飞书消息彻底失败: {ex}")
+    return False
 
 def gather_agent_context(query: str) -> str:
     """Collect only user-configured context; never assume a personal domain."""

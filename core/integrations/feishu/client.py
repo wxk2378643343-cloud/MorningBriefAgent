@@ -48,6 +48,19 @@ class FeishuClient:
                 raise RetryableIntegrationError(str(exc)) from exc
         return retry_call(operation)
 
+    def _get(self, *args, **kwargs):
+        def operation():
+            try:
+                response = self.session.get(*args, **kwargs)
+                if response.status_code in (429, 500, 502, 503, 504):
+                    raise RetryableIntegrationError(
+                        f"feishu provider status {response.status_code}"
+                    )
+                return response
+            except requests.RequestException as exc:
+                raise RetryableIntegrationError(str(exc)) from exc
+        return retry_call(operation)
+
     def get_token(self) -> Optional[str]:
         """Fetch or refresh tenant access token."""
         now = time.time()
@@ -184,6 +197,51 @@ class FeishuClient:
         except Exception as e:
             logger.error(f"❌ 爪爪openclaw 发送文本消息失败: {e}")
             return False
+
+    def reply_message(self, message_id: str, content: dict, msg_type: str) -> bool:
+        """Reply in an existing message thread through the official API."""
+        token = self.get_token()
+        if not token or not message_id:
+            return False
+        url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/reply"
+        payload = {
+            "content": json.dumps(content, ensure_ascii=False),
+            "msg_type": msg_type,
+        }
+        try:
+            response = self._post(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json; charset=utf-8",
+                },
+                json=payload,
+                timeout=15,
+            )
+            return response.json().get("code") == 0
+        except Exception as exc:
+            logger.error("Feishu thread reply failed: %s", exc)
+            return False
+
+    def download_image(self, message_id: str, image_key: str) -> Optional[bytes]:
+        """Download an image resource from a Feishu message."""
+        token = self.get_token()
+        if not token or not message_id or not image_key:
+            return None
+        url = (
+            f"https://open.feishu.cn/open-apis/im/v1/messages/"
+            f"{message_id}/resources/{image_key}?type=image"
+        )
+        try:
+            response = self._get(
+                url,
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=20,
+            )
+            return response.content if response.status_code == 200 else None
+        except Exception as exc:
+            logger.error("Feishu image download failed: %s", exc)
+            return None
 
 # Global singleton client
 feishu_client = FeishuClient()
