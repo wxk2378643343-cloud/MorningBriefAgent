@@ -434,14 +434,29 @@ Start-Process -WindowStyle Hidden `
 
 ## Windows 计划任务
 
-项目提供一个不依赖 `.bat` 的注册脚本。它会把业务工作流和可靠性对账注册为 Windows 计划任务；Agent 不作为独立任务运行，而是在晨报、待办、新闻和聊天复盘流程中按需调用。
+本项目的定时机制本质上是 Windows 任务计划程序（Task Scheduler），不是 Agent 自己常驻计时。Windows 负责在指定时间启动 Python，业务服务再按需调用 Agent。
 
-首次配置或迁移到新机器时，在项目根目录执行：
+```text
+Windows Task Scheduler
+        ↓
+python main.py brief / todo-morning / news / ...
+        ↓
+读取本地数据 → Agent 分析 → 飞书同步 / 本地归档
+```
+
+Agent 不作为独立任务运行，避免重复读取上下文和重复生成计划。晨报、待办、新闻、聊天复盘和股票/基金评估等业务任务，会在自己的流程中调用同一个 Agent 边界。
+
+项目提供一个不依赖 `.bat` 的注册脚本，会把业务工作流和可靠性对账注册为 Windows 任务。
+
+首次配置或迁移到新机器时，先安装依赖并激活虚拟环境，然后在项目根目录执行：
 
 ```powershell
+.\.venv\Scripts\Activate.ps1
 Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\register_windows_tasks.ps1
 ```
+
+注册脚本会使用当前激活的 Python，创建或更新下面的任务。它不会上传任务配置，也不会把 `.env` 内容写入任务参数。
 
 默认任务如下：
 
@@ -458,6 +473,43 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 如果不使用某项本地数据，只需在 `.env` 中取消对应目录配置；任务仍可安全跳过该能力并记录诊断信息。
 
+查看任务状态和下次运行时间：
+
+```powershell
+$names = @(
+  "DailyTodoMorningPush", "KaoyanMorningBrief", "MorningChatDigest",
+  "MorningGlobalNews", "FundDailyAdvisor1400",
+  "DailyTodoEveningReview", "MorningBriefAgentBot",
+  "MorningBriefAgentReconcile"
+)
+
+Get-ScheduledTask -TaskName $names | ForEach-Object {
+  $info = Get-ScheduledTaskInfo -TaskName $_.TaskName
+  [pscustomobject]@{
+    Task = $_.TaskName
+    State = $_.State
+    LastRun = $info.LastRunTime
+    LastResult = $info.LastTaskResult
+    NextRun = $info.NextRunTime
+  }
+}
+```
+
+需要手动测试某个任务时：
+
+```powershell
+Start-ScheduledTask -TaskName "DailyTodoMorningPush"
+```
+
+测试前请确认本地配置和飞书权限，因为待办、新闻、基金评估等任务可能会产生外部卡片或本地文件。停止或删除任务：
+
+```powershell
+Disable-ScheduledTask -TaskName "MorningBriefAgentBot"
+Unregister-ScheduledTask -TaskName "MorningBriefAgentReconcile" -Confirm:$false
+```
+
+重新运行注册脚本可以恢复或更新配置。计划任务属于本机状态，不会随 Git 仓库同步；仓库只提供可重复执行的注册脚本。
+
 手动创建任务时建议：
 
 1. 使用当前仓库的绝对路径作为“起始于”目录；
@@ -465,8 +517,6 @@ Set-ExecutionPolicy -Scope Process Bypass
 3. 勾选“仅在用户登录时运行”开始调试；
 4. 先手动运行一次并检查 `logs/`；
 5. 不要把 `.env` 内容写入任务参数或日志。
-
-计划任务属于本机状态，不会随 Git 仓库同步。
 
 ## 目录结构
 
