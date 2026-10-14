@@ -31,6 +31,8 @@ if CORE_DIR not in sys.path:
     sys.path.insert(0, CORE_DIR)
 
 import config
+import agent_context
+import agy_bridge
 from feishu_client import feishu_client
 
 LOCAL_PROXY = config.LOCAL_PROXY
@@ -85,38 +87,35 @@ def get_domestic_news() -> List[Dict[str, str]]:
     return items[:3]
 
 def translate_and_summarize_world_news(en_title: str, en_desc: str) -> tuple[str, str]:
-    """Translate and produce deep Chinese summary for overseas news headlines."""
-    title_lower = en_title.lower()
-    desc_lower = en_desc.lower()
-    
-    # 1. Geopolitics & Military
-    if "lebanon" in title_lower or "hezbollah" in title_lower:
-        zh_title = "以军在黎巴嫩展开密集军事行动，重点打击真主党武器目标"
-        zh_desc = "以军空袭黎巴嫩南部多处据点，指认其为火箭弹发射与军械库设施；中东边境地缘风险急剧外溢，国际社会呼吁保持最大限度克制。"
-    elif "israel" in title_lower or "gaza" in title_lower:
-        zh_title = "加沙地带与中东多线交火持续，停火协议谈判陷入胶着"
-        zh_desc = "以军针对加沙哈马斯目标展开持续行动，人道主义救援通道受阻，多国斡旋方对新一轮停火框架条款展开紧急磋商。"
-    elif "ukraine" in title_lower or "russia" in title_lower:
-        zh_title = "俄乌前线战事胶着推进，双方在关键战略节点爆发激烈拉锯"
-        zh_desc = "双方在东线与边境区域持续展开无人机侦察与远程炮火互射，能源基础设施防护与冬季后勤补给成为当前核心博弈点。"
-    elif "china" in title_lower or "taiwan" in title_lower:
-        zh_title = "外媒高度聚焦亚太地缘安全与台海演训动态"
-        zh_desc = "外媒持续关注中国军队在台岛周边的全要素立体演训与实战化部署，深度评估亚太区域贸易通道与供应链韧性。"
-    elif "trump" in title_lower or "harris" in title_lower or "election" in title_lower or "biden" in title_lower:
-        zh_title = "美国大选冲刺决战阶段：摇摆州民调紧咬，经济与移民成辩论焦点"
-        zh_desc = "两党候选人在关键摇摆州频繁造势集会，通胀物价、科技关税壁垒与边境移民政策成为选民最关切的博弈核心。"
-    elif "fed" in title_lower or "rate" in title_lower or "inflation" in title_lower:
-        zh_title = "美联储利率决议与全球宏观流动性预期博弈升温"
-        zh_desc = "非农就业与核心通胀数据呈现粘性，全球金融市场对美联储后续降息步调产生显著分歧，美元指数宽幅震荡。"
-    elif "ai" in title_lower or "chip" in title_lower or "nvidia" in title_lower or "apple" in title_lower:
-        zh_title = "全球AI算力竞逐与前沿模型商业化落地提速"
-        zh_desc = "硅谷科技巨头加速投资新一代数据中心与先进封装芯片，企业端智能化行动代理（AI Agents）进入实质部署期。"
-    else:
-        # Generic clean title and desc
-        zh_title = f"国际核心要闻：{en_title[:55]}"
-        zh_desc = f"外媒报道核心摘要：{en_desc[:120]}... 国际观察人士指出该事件对区域经贸与政局平衡具有持续影响。"
+    """Translate and summarize one article with the local Agent.
 
-    return zh_title, zh_desc
+    The parser supplies source text only. It must not infer geopolitical facts
+    from keywords or append generic claims that are absent from the article.
+    """
+    prompt = agent_context.build_prompt(
+        task=(
+            "将这条外文新闻翻译并压缩成中文。严格返回 JSON："
+            "{\"title\":\"准确中文标题\",\"summary\":\"基于原文的中文摘要\"}。"
+            "只陈述标题和摘要明确支持的事实；无法确认的信息标记为“原文未说明”，"
+            "不要补充背景、预测、立场或其他新闻内容。"
+        ),
+        query=en_title,
+        context=f"【原标题】\n{en_title}\n\n【原文摘要】\n{en_desc}",
+    )
+    try:
+        result = agy_bridge.ask_native_agy("world-news-summary", prompt)
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", result or "", re.DOTALL)
+        parsed = json.loads(fenced.group(1) if fenced else result)
+        if isinstance(parsed, dict):
+            title = str(parsed.get("title", "")).strip()
+            summary = str(parsed.get("summary", "")).strip()
+            if title and summary:
+                return title, summary
+    except Exception as exc:
+        print(f"⚠️ Agent 新闻摘要暂不可用: {exc}")
+
+    # Safe fallback: preserve the source instead of fabricating a summary.
+    return f"国际新闻：{en_title[:80]}", en_desc[:240] or "原文摘要为空，暂无法生成中文精读。"
 
 def get_world_news() -> List[Dict[str, str]]:
     """Gather international breaking news (VIA OVERSEAS PROXY 7897) with Chinese summaries."""
