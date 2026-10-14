@@ -38,6 +38,40 @@ from core.agent.contracts import AgentPlan
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.client import feishu_client
 from core.integrations.sync_outbox import sync_outbox
+from . import feishu_tasks
+
+
+def delete_feishu_task(task_id: str) -> bool:
+    return feishu_tasks.delete_feishu_task(task_id, gateway=feishu_gateway)
+
+
+def list_feishu_tasks(page_size: int = 50) -> List[Dict[str, Any]]:
+    return feishu_tasks.list_feishu_tasks(page_size, gateway=feishu_gateway)
+
+
+def create_feishu_task(
+    summary: str,
+    description: str = "",
+    due_timestamp: Optional[int] = None,
+    check_duplicate: bool = True,
+    idempotency_key: str = "",
+) -> Optional[dict]:
+    return feishu_tasks.create_feishu_task(
+        summary,
+        description,
+        due_timestamp,
+        check_duplicate,
+        idempotency_key,
+        gateway=feishu_gateway,
+    )
+
+
+def complete_feishu_task(task_id: str) -> bool:
+    return feishu_tasks.complete_feishu_task(task_id, gateway=feishu_gateway)
+
+
+def complete_task_by_keyword(keyword: str) -> Optional[str]:
+    return feishu_tasks.complete_task_by_keyword(keyword, gateway=feishu_gateway)
 
 SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
 from . import review_sync as review_sync_service
@@ -477,151 +511,6 @@ def generate_and_publish_morning_todo() -> bool:
     }
 
     return push_feishu_card(card, f"📋 今日核心作战规划已就绪 ({today_str})")
-
-# --- 7. Create Official Feishu Task (Task v2 API) ---
-def delete_feishu_task(task_id: str) -> bool:
-    """Delete a Feishu task by ID."""
-    try:
-        return feishu_gateway.delete_task(task_id)
-    except Exception as e:
-        print(f"⚠️ 删除飞书任务异常: {e}")
-        return False
-
-def create_feishu_task(summary: str, description: str = "", due_timestamp: Optional[int] = None,
-                       check_duplicate: bool = True, idempotency_key: str = "") -> Optional[dict]:
-    """
-    Create a task item in Feishu Task v2 system with Idempotent Deduplication.
-    Returns task data dict or None on failure.
-    """
-    summary = summary.strip()
-    if not summary:
-        return None
-
-    if idempotency_key:
-        saved = idempotency.store.get(idempotency_key)
-        if saved and saved.get("status") == "succeeded":
-            result = saved.get("result")
-            if isinstance(result, dict):
-                result = dict(result)
-                result["reused"] = True
-            return result
-        if saved and saved.get("provider_id"):
-            return {"id": saved["provider_id"], "task_id": saved["provider_id"],
-                    "summary": summary, "reused": True}
-
-    # Compatibility guard for tasks created before the local idempotency store.
-    if check_duplicate:
-        try:
-            existing = list_feishu_tasks(page_size=50)
-            for et in existing:
-                if et.get("complete_time") == "0" and et.get("summary", "").strip() == summary:
-                    provider_id = et.get("id")
-                    if idempotency_key and provider_id:
-                        result = {"task_id": provider_id, "id": provider_id,
-                                  "summary": summary, "reused": True}
-                        idempotency.store.put(
-                            idempotency_key,
-                            {"status": "succeeded", "result": result},
-                        )
-                        return result
-                    return {"task_id": provider_id, "id": provider_id,
-                            "summary": summary, "reused": True}
-        except Exception as de:
-            pass
-
-    try:
-        if idempotency_key:
-            sync_outbox.begin(
-                idempotency_key, "feishu.task",
-                {
-                    "idempotency_key": idempotency_key,
-                    "summary": summary,
-                    "description": description,
-                    "due_timestamp": due_timestamp,
-                },
-            )
-            task_data, reused = idempotency.store.execute_once(
-                idempotency_key,
-                lambda: feishu_gateway.create_task(summary, description, due_timestamp),
-                success=lambda result: bool(result),
-            )
-            if isinstance(task_data, dict) and reused:
-                task_data = dict(task_data)
-                task_data["reused"] = True
-            sync_outbox.finish(idempotency_key, bool(task_data))
-        else:
-            task_data = feishu_gateway.create_task(summary, description, due_timestamp)
-        if task_data:
-            return task_data
-    except Exception as e:
-        if idempotency_key:
-            sync_outbox.finish(idempotency_key, False, str(e))
-        print(f"⚠️ 创建飞书任务网络异常: {e}")
-    return None
-
-def complete_feishu_task(task_id: str) -> bool:
-    """
-    Mark a Feishu official task as completed using Task v1 complete API.
-    """
-    try:
-        if feishu_gateway.complete_task(task_id):
-            print(f"✅ 成功将飞书任务标记为完成: {task_id}")
-            return True
-        print(f"⚠️ 标记飞书任务完成失败 ({task_id})")
-        return False
-    except Exception as e:
-        print(f"⚠️ 标记飞书任务完成网络异常: {e}")
-        return False
-
-def list_feishu_tasks(page_size: int = 50) -> List[Dict[str, Any]]:
-    """Fetch recent Feishu tasks with auto-retry."""
-    try:
-        return feishu_gateway.list_tasks(page_size)
-    except Exception as e:
-        print(f"⚠️ 获取飞书任务列表网络异常: {e}")
-    return []
-
-def complete_task_by_keyword(keyword: str) -> Optional[str]:
-    """
-    Search Feishu tasks by keyword and complete them.
-    Also sync the checkmark to the configured local plan file.
-    """
-    kw = keyword.strip()
-    if not kw:
-        return None
-
-    tasks = list_feishu_tasks()
-    completed_names = []
-    for t in tasks:
-        summary = t.get("summary", "")
-        t_id = t.get("id", "")
-        # Match keyword in summary
-        if kw in summary or summary in kw:
-            if complete_feishu_task(t_id):
-                completed_names.append(summary)
-
-    # Sync to the configured local plan file
-    if config.TODAY_TODO_PATH and os.path.exists(config.TODAY_TODO_PATH):
-        try:
-            with open(config.TODAY_TODO_PATH, "r", encoding="utf-8") as f:
-                c = f.read()
-            for name in completed_names:
-                # Replace - [ ] **name** with - [x] **name**
-                c = re.sub(rf"- \[ \] \*\*({re.escape(name)}.*?)\*\*", r"- [x] **\1**", c)
-            with open(config.TODAY_TODO_PATH, "w", encoding="utf-8") as f:
-                f.write(c)
-        except Exception as e:
-            print(f"同步本地计划勾选异常: {e}")
-
-    # Sync checkmarks to 04 - 周期复盘/日记 (Daily)
-    try:
-        review_sync_service.sync_todo_completion_to_journal(completed_names)
-    except Exception as je:
-        print(f"⚠️ 同步日记待办勾选异常: {je}")
-
-    if completed_names:
-        return f"✅ 已成功将飞书任务、Obsidian 待办与日记打勾完成：\n" + "\n".join([f"• [x] **{n}**" for n in completed_names])
-    return None
 
 # --- 8. Append Custom Todo Realtime ---
 def append_custom_todo(item_text: str) -> str:
