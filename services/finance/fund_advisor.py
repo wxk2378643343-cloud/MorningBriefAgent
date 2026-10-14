@@ -93,9 +93,9 @@ def fetch_realtime_quotes(symbols: List[str]) -> Dict[str, Dict[str, float]]:
                         "price": float(parts[6] or parts[2] or 0),
                         "change_pct": float(parts[8] or 0),
                     }
-                elif symbol.startswith("gb_") and len(parts) > 3:
+                elif symbol.startswith("gb_") and len(parts) > 4:
                     price = float(parts[1] or 0)
-                    change_pct = float(parts[3] or 0)
+                    change_pct = float(parts[2] or 0)
                     quotes[symbol] = {"price": price, "change_pct": change_pct}
                 elif len(parts) > 3:
                     previous = float(parts[2] or 0)

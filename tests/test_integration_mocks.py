@@ -84,7 +84,7 @@ class MockIntegrationTests(unittest.TestCase):
 
     def test_global_market_quote_uses_percentage_field(self):
         opener = FakeOpener(
-            b'var hq_str_gb_$aapl="Apple,190.50,1.25,0.66,189.25,191.00";'
+            b'var hq_str_gb_$aapl="Apple,190.50,0.66,2026-10-14 16:13:45,1.25,189.25,191.00";'
         )
         with mock.patch.object(
             fund_advisor.urllib.request,
