@@ -602,8 +602,9 @@ def push_to_feishu(card_payload: Dict[str, Any]) -> bool:
 def archive_to_obsidian(analysis: Dict[str, Any]) -> str:
     """Archive detailed report covering all active users to Obsidian vault."""
     date_str = analysis["date_str"]
-    vault_root = config.VAULT_ROOT
-    archive_dir = os.path.join(vault_root, "11 - 聊天习惯与社交数据", "每日沟通复盘")
+    archive_dir = config.CHAT_ARCHIVE_DIR
+    if not archive_dir:
+        return None
     os.makedirs(archive_dir, exist_ok=True)
     
     # Safe filename for Windows filesystem

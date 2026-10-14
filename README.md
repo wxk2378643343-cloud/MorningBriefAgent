@@ -112,9 +112,16 @@ WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 ```dotenv
 TODAY_TODO_PATH=D:\path\to\knowledge-base\daily-plan.md
 TODO_ARCHIVE_DIR=D:\path\to\knowledge-base\plan-archive
+REVIEW_DAILY_DIR=D:\path\to\knowledge-base\reviews\daily
+REVIEW_WEEKLY_DIR=D:\path\to\knowledge-base\reviews\weekly
+REVIEW_MONTHLY_DIR=D:\path\to\knowledge-base\reviews\monthly
+FITNESS_PLAN_PATH=D:\path\to\knowledge-base\activity-plan.md
+FITNESS_LOG_PATH=D:\path\to\knowledge-base\activity-log.md
+FITNESS_ARCHIVE_DIR=D:\path\to\knowledge-base\activity-archive
+CHAT_ARCHIVE_DIR=D:\path\to\knowledge-base\chat-reviews
 ```
 
-未配置 `TODAY_TODO_PATH` 时，服务仍可生成 Agent 计划并同步飞书任务/日历，但不会擅自创建或猜测本地知识库目录。
+未配置这些路径时，服务仍可生成 Agent 计划并同步飞书任务/日历，但不会擅自创建或猜测本地知识库目录。
 
 ### Agent 上下文与计划
 

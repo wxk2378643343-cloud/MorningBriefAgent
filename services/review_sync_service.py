@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Review Sync Service (周期复盘全自动级联同步引擎)
-实现「日记 (Daily) ➔ 周报 (Weekly) ➔ 月度回顾 (Monthly)」与「待办事项 (03)」的全自动双向联动：
+实现日记、周报、月度回顾与待办事项的全自动双向联动：
 1. 日记自动伴生与待办镜像注入
 2. 打卡指令实时双写打勾 ([ ] -> [x])
 3. 周报自然周框架自愈保全与待办矩阵跟踪
@@ -32,15 +32,15 @@ if CORE_DIR not in sys.path:
 import config
 
 VAULT_ROOT = config.VAULT_ROOT
-REVIEW_ROOT = os.path.join(VAULT_ROOT, "04 - 周期复盘")
-DAILY_DIR = os.path.join(REVIEW_ROOT, "日记 (Daily)")
-WEEKLY_DIR = os.path.join(REVIEW_ROOT, "周报 (Weekly)")
-MONTHLY_DIR = os.path.join(REVIEW_ROOT, "月度回顾 (Monthly)")
-TODO_ARCHIVE_DIR = os.path.join(VAULT_ROOT, "03 - 待办事项", "历史归档")
+DAILY_DIR = config.REVIEW_DAILY_DIR
+WEEKLY_DIR = config.REVIEW_WEEKLY_DIR
+MONTHLY_DIR = config.REVIEW_MONTHLY_DIR
+TODO_ARCHIVE_DIR = config.TODO_ARCHIVE_DIR
 
 def ensure_review_directories() -> None:
     for directory in (DAILY_DIR, WEEKLY_DIR, MONTHLY_DIR, TODO_ARCHIVE_DIR):
-        os.makedirs(directory, exist_ok=True)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
 
 
 def replace_markdown_section(content: str, header: str, new_body: str) -> str:
@@ -118,8 +118,8 @@ tags:
 > 💡 **今日一句话总结**：**由本地 Agent 根据当日资料生成。**
 > 
 > 🔗 **待办与周报双链直达**：
-> • 📋 **今日待办清单**：[[03 - 待办事项/今日待办.md|查看今日主线待办]]
-> • 🚀 **本周敏捷周报**：[[04 - 周期复盘/周报 (Weekly)/{weekly_filename}|查看 {week_code} 周报]]
+> • 📋 **今日待办清单**：由配置的计划输出路径提供
+> • 🚀 **本周报告**：{weekly_filename}
 
 ---
 
@@ -241,8 +241,8 @@ tags:
 > **{week_code} 周期总结由本地 Agent 根据已归档资料生成。**
 > 
 > 🔗 **层级双链直达**：
-> • 📋 **本周待办流水穿透**：[[03 - 待办事项/历史归档/{week_folder}/|查看 {week_code} 全量每日待办流水]]
-> • 🌕 **所属月度回顾**：[[04 - 周期复盘/月度回顾 (Monthly)/{monthly_filename}|查看 {month_str} 月度复盘]]
+> • 📋 **本周待办流水**：{week_folder}
+> • 🌕 **所属月度回顾**：{monthly_filename}
 
 ---
 
@@ -260,9 +260,9 @@ tags:
 ---
 
 ## 🔗 三、本周关键资产索引
-- **本周待办文件夹**：`03 - 待办事项/历史归档/{week_folder}/`
-- **今日核心待办**：[[03 - 待办事项/今日待办.md|今日待办]]
-- **今日复盘日记**：[[04 - 周期复盘/日记 (Daily)/{date_str}.md|当日复盘日记]]
+- **本周待办文件夹**：`{week_folder}/`
+- **今日核心待办**：由配置的计划输出路径提供
+- **今日复盘日记**：`{date_str}.md`
 """
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -358,7 +358,7 @@ def ensure_monthly_report(date_str: str) -> str:
             if wf.startswith(w_code) and wf.endswith(".md"):
                 matched = wf
                 break
-        weekly_index_lines.append(f"- 🚀 **{w_code}**：[[04 - 周期复盘/周报 (Weekly)/{matched}|查看 {w_code} 敏捷周报]] · [[03 - 待办事项/历史归档/{w_folder}/|待办流水]]")
+        weekly_index_lines.append(f"- 🚀 **{w_code}**：{matched} · 待办流水：{w_folder}/")
 
     weekly_index_block = "\n".join(weekly_index_lines)
 
@@ -420,9 +420,9 @@ mindmap
 ---
 
 ## 🔗 四、月度关键资产直达
-- **月度周报集合**：`04 - 周期复盘/周报 (Weekly)/`
-- **每日日记集合**：`04 - 周期复盘/日记 (Daily)/`
-- **待办历史归档**：`03 - 待办事项/历史归档/`
+- **月度周报集合**：由 `REVIEW_WEEKLY_DIR` 配置
+- **每日日记集合**：由 `REVIEW_DAILY_DIR` 配置
+- **待办历史归档**：由 `TODO_ARCHIVE_DIR` 配置
 """
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(content)

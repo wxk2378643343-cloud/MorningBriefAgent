@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Afternoon Fitness Plan Publisher Agent
-Reads 09 - 健身管理 current cycle plan, matches today's weekday,
+Reads configured activity plan and log paths,
 extracts target muscle groups, Hammer Strength / Smith Machine exercises, sets & reps,
 delivers a high-energy Feishu card at 16:00 and archives to Obsidian.
 """
@@ -34,18 +34,8 @@ import config
 import feishu_calendar
 from feishu_client import feishu_client
 
-FITNESS_PLAN_PATH = os.path.join(
-    config.VAULT_ROOT,
-    "09 - 健身管理",
-    "02 - 阶段目标与周期计划",
-    "当前周期训练总计划.md"
-)
-FITNESS_LOG_PATH = os.path.join(
-    config.VAULT_ROOT,
-    "09 - 健身管理",
-    "05 - 训练日常打卡与复盘",
-    "每日任务追踪与执行流水账.md"
-)
+FITNESS_PLAN_PATH = config.FITNESS_PLAN_PATH
+FITNESS_LOG_PATH = config.FITNESS_LOG_PATH
 
 WEEKDAY_PLAN_MAP = {
     0: ("Day 1 (周一)", "胸部饱满 + 肱三头肌 + 腹直肌上部"),
@@ -268,7 +258,7 @@ def build_feishu_fitness_card(workout_data: Dict[str, Any]) -> Dict[str, Any]:
                     "elements": [
                         {
                             "tag": "plain_text",
-                            "content": f"数据源：Obsidian 09-健身管理 (当前周期计划 + 每日执行流水账) | 生成时间：{now_time}"
+                            "content": f"数据源：已配置的活动计划与执行记录 | 生成时间：{now_time}"
                         }
                     ]
                 }
@@ -283,7 +273,9 @@ def send_feishu(card: Dict[str, Any]) -> bool:
 
 def record_fitness_to_obsidian(workout_data: Dict[str, Any]):
     today_str = datetime.date.today().strftime("%Y-%m-%d")
-    archive_dir = os.path.join(config.VAULT_ROOT, "09 - 健身管理", "05 - 训练日常打卡与复盘")
+    archive_dir = config.FITNESS_ARCHIVE_DIR
+    if not archive_dir:
+        return None
     file_path = os.path.join(archive_dir, f"{today_str}-训练课表推送与执行记录.md")
     
     # 保护机制：如果今日文件已存在且包含饮食记录或勾选，绝不暴力覆写！

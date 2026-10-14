@@ -59,6 +59,13 @@ TECH_NEWS_DIR = os.getenv("TECH_NEWS_DIR", "")
 STUDY_TRACKER_PATH = os.getenv("STUDY_TRACKER_PATH", "")
 TODAY_TODO_PATH = os.getenv("TODAY_TODO_PATH", "")
 TODO_ARCHIVE_DIR = os.getenv("TODO_ARCHIVE_DIR", "")
+REVIEW_DAILY_DIR = os.getenv("REVIEW_DAILY_DIR", "")
+REVIEW_WEEKLY_DIR = os.getenv("REVIEW_WEEKLY_DIR", "")
+REVIEW_MONTHLY_DIR = os.getenv("REVIEW_MONTHLY_DIR", "")
+FITNESS_PLAN_PATH = os.getenv("FITNESS_PLAN_PATH", "")
+FITNESS_LOG_PATH = os.getenv("FITNESS_LOG_PATH", "")
+FITNESS_ARCHIVE_DIR = os.getenv("FITNESS_ARCHIVE_DIR", "")
+CHAT_ARCHIVE_DIR = os.getenv("CHAT_ARCHIVE_DIR", "")
 
 # Feishu OpenAPI configuration. Credentials must never have source-code defaults.
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")
