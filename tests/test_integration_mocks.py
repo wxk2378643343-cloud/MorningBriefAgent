@@ -1,10 +1,13 @@
 """Offline integration tests for provider boundaries."""
 
 import io
+import hashlib
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
@@ -19,6 +22,8 @@ from core.integrations.feishu.gateway import FeishuGateway
 from core.integrations.sync_outbox import SyncOutbox
 from core.integrations.reconcile import reconcile_pending
 from core.runtime import config
+from services.communications import chat_reader
+from services.planning import review_sync
 from services.communications.chat_analysis import analyze_and_reflect
 
 
@@ -233,6 +238,78 @@ class MockIntegrationTests(unittest.TestCase):
                 outbox.finish("retry-key", False, "second failure")
                 self.assertEqual(outbox.pending(), [])
                 self.assertEqual(len(outbox.dead_letter()), 1)
+
+    def test_outbox_purges_only_old_succeeded_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            outbox = SyncOutbox(store)
+            outbox.begin("old-success", "feishu.task", {"summary": "x"})
+            outbox.finish("old-success", True)
+            with closing(sqlite3.connect(str(store.path))) as connection:
+                connection.execute(
+                    "UPDATE sync_outbox SET updated_at = ? WHERE key = ?",
+                    ("2000-01-01T00:00:00+00:00", "old-success"),
+                )
+                connection.commit()
+            self.assertEqual(outbox.purge_succeeded(retention_days=30), 1)
+            self.assertEqual(outbox.dead_letter(), [])
+
+    def test_chat_reader_scans_configured_sqlite_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            contact_db = root / "contact.db"
+            message_db = root / "message.db"
+            username = "wxid_alice"
+            group = "team@chatroom"
+            private_table = f"Msg_{hashlib.md5(username.encode()).hexdigest()}"
+            group_table = f"Msg_{hashlib.md5(group.encode()).hexdigest()}"
+            with closing(sqlite3.connect(str(contact_db))) as connection:
+                connection.execute(
+                    "CREATE TABLE contact(username TEXT, remark TEXT, nick_name TEXT)"
+                )
+                connection.executemany(
+                    "INSERT INTO contact VALUES (?, ?, ?)",
+                    [(username, "Alice", "Alice N"), (group, "", "Team")],
+                )
+                connection.commit()
+            with closing(sqlite3.connect(str(message_db))) as connection:
+                for table in (private_table, group_table):
+                    connection.execute(
+                        f"CREATE TABLE {table}("
+                        "create_time INTEGER, status INTEGER, local_type INTEGER, "
+                        "message_content TEXT)"
+                    )
+                connection.execute(
+                    f"INSERT INTO {private_table} VALUES (100, 2, 1, '跟进事项')"
+                )
+                connection.execute(
+                    f"INSERT INTO {group_table} VALUES (100, 2, 1, '群内更新')"
+                )
+                connection.commit()
+            friends, groups = chat_reader.get_contact_maps(str(contact_db))
+            private = chat_reader.scan_private_chats(str(message_db), friends, 0, 200)
+            selected, total = chat_reader.scan_target_group_chats(
+                str(message_db), groups, 0, 200, ("Team",)
+            )
+            self.assertEqual(friends[username], "Alice")
+            self.assertEqual(private[0]["messages"][0][2], "跟进事项")
+            self.assertEqual(selected[0]["name"], "Team")
+            self.assertEqual(total, 1)
+
+    def test_review_facade_creates_weekly_and_monthly_documents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            with mock.patch.multiple(
+                review_sync,
+                DAILY_DIR=str(root / "daily"),
+                WEEKLY_DIR=str(root / "weekly"),
+                MONTHLY_DIR=str(root / "monthly"),
+                TODO_ARCHIVE_DIR=str(root / "archive"),
+            ):
+                weekly = review_sync.ensure_weekly_report("2026-10-14")
+                monthly = review_sync.ensure_monthly_report("2026-10-14")
+            self.assertTrue(Path(weekly).exists())
+            self.assertTrue(Path(monthly).exists())
 
     def test_calendar_sync_does_not_delete_unrelated_events(self):
         class FakeCalendar:

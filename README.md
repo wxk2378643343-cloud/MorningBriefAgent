@@ -75,6 +75,10 @@ python -m compileall -q .
 python main.py doctor
 ```
 
+这三个命令就是最小离线运行方式，不需要飞书凭据、微信数据库、
+Obsidian Vault 或本地 Agent。只要 Python 3.10+ 和
+`pip install -r requirements.txt` 成功，用户即可验证项目基础功能。
+
 默认测试不会访问真实飞书。需要验证本机凭据和只读任务接口时，可显式运行：
 
 ```powershell

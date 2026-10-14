@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import threading
+from contextlib import closing
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
@@ -51,7 +52,7 @@ class IdempotencyStore:
         return connection
 
     def _ensure_schema(self) -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.commit()
 
     def _migrate_legacy_json(self) -> None:
@@ -64,7 +65,7 @@ class IdempotencyStore:
             return
         if not isinstance(legacy, dict):
             return
-        with self._lock, self._connect() as connection:
+        with self._lock, closing(self._connect()) as connection:
             for key, value in legacy.items():
                 connection.execute(
                     """
@@ -83,7 +84,7 @@ class IdempotencyStore:
             pass
 
     def get(self, key: str) -> Optional[Any]:
-        with self._lock, self._connect() as connection:
+        with self._lock, closing(self._connect()) as connection:
             row = connection.execute(
                 "SELECT value_json FROM idempotency WHERE key = ?", (key,)
             ).fetchone()
@@ -96,7 +97,7 @@ class IdempotencyStore:
 
     def put(self, key: str, value: Any) -> None:
         encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-        with self._lock, self._connect() as connection:
+        with self._lock, closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO idempotency(key, value_json)

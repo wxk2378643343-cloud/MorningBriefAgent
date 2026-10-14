@@ -9,6 +9,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+from contextlib import closing
 from typing import Any, Dict, List, Tuple
 
 try:
@@ -64,7 +65,7 @@ def get_contact_maps(
     if not os.path.exists(contact_db):
         return friends, chatrooms
     try:
-        with sqlite3.connect(contact_db) as connection:
+        with closing(sqlite3.connect(contact_db)) as connection:
             rows = connection.execute(
                 "SELECT username, remark, nick_name FROM contact"
             ).fetchall()
@@ -156,7 +157,7 @@ def scan_private_chats(
     if not os.path.exists(message_db):
         return result
     try:
-        with sqlite3.connect(message_db) as connection:
+        with closing(sqlite3.connect(message_db)) as connection:
             cursor = connection.cursor()
             for username, name in friends_map.items():
                 table = f"Msg_{hashlib.md5(username.encode('utf-8')).hexdigest()}"
@@ -218,7 +219,7 @@ def scan_target_group_chats(
     if not os.path.exists(message_db):
         return result, total_groups
     try:
-        with sqlite3.connect(message_db) as connection:
+        with closing(sqlite3.connect(message_db)) as connection:
             cursor = connection.cursor()
             for username, name in chatrooms_map.items():
                 table = f"Msg_{hashlib.md5(username.encode('utf-8')).hexdigest()}"

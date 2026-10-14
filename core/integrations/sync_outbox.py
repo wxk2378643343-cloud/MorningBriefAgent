@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from typing import Any
 
@@ -53,12 +54,12 @@ class SyncOutbox:
         return connection
 
     def _ensure_schema(self):
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.commit()
 
     def begin(self, key: str, kind: str, payload: dict[str, Any]) -> None:
         now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO sync_outbox(key, kind, payload_json, status, attempts, updated_at)
@@ -78,7 +79,7 @@ class SyncOutbox:
             connection.commit()
 
     def finish(self, key: str, success: bool, error: str = "") -> None:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             if success:
                 connection.execute(
                     """
@@ -126,7 +127,7 @@ class SyncOutbox:
 
     def pending(self, limit: int = 100) -> list[dict[str, Any]]:
         now = datetime.now(timezone.utc).isoformat()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT key, kind, payload_json, status, attempts, last_error,
@@ -149,7 +150,7 @@ class SyncOutbox:
         ]
 
     def dead_letter(self, limit: int = 100) -> list[dict[str, Any]]:
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             rows = connection.execute(
                 """
                 SELECT key, kind, payload_json, status, attempts, last_error,
@@ -178,7 +179,7 @@ class SyncOutbox:
         )
         cutoff = datetime.now(timezone.utc).timestamp() - days * 86400
         cutoff_iso = datetime.fromtimestamp(cutoff, timezone.utc).isoformat()
-        with self._connect() as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 "DELETE FROM sync_outbox WHERE status = 'succeeded' AND updated_at < ?",
                 (cutoff_iso,),
