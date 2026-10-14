@@ -211,6 +211,33 @@ def get_tech_radar_news() -> List[Dict[str, str]]:
         tech_items = []
     return tech_items
 
+def generate_news_takeaway(
+    news_data: Dict[str, Any],
+    tech_items: List[Dict[str, str]],
+) -> str:
+    """Generate a source-grounded daily takeaway with the local Agent."""
+    context = json.dumps(
+        {"news": news_data, "technology": tech_items},
+        ensure_ascii=False,
+        default=str,
+    )[:16000]
+    prompt = agent_context.build_prompt(
+        task=(
+            "根据当天新闻和技术项目生成一段不超过三句的中文晨读结论。"
+            "只总结输入中明确出现的事实或趋势，不要使用固定口号、个人身份称谓、"
+            "未经来源支持的判断，也不要凭空推荐某个工具。"
+        ),
+        query="今天这些信息最值得注意的共同趋势是什么？",
+        context=context,
+    )
+    try:
+        result = agy_bridge.ask_native_agy("news-takeaway", prompt)
+        if result and not result.startswith("❌"):
+            return result.strip()
+    except Exception as exc:
+        print(f"⚠️ Agent 晨读结论暂不可用: {exc}")
+    return "本次未生成额外晨读结论，请以新闻原文和来源链接为准。"
+
 def build_feishu_news_card(news_data: Dict[str, Any], tech_items: List[Dict[str, str]]) -> Dict[str, Any]:
     """Construct Apple/Linear aesthetic Feishu news card with full clickable links."""
     now_str = datetime.datetime.now().strftime("%Y年%m月%d日 %H:%M")
@@ -240,12 +267,8 @@ def build_feishu_news_card(news_data: Dict[str, Any], tech_items: List[Dict[str,
         tech_lines.append(f"• 🔥 **[{t['name']}]({t['url']})** (`{t['repo']}`)\n   ▸ 🔗 [查看 GitHub 仓库]({t['url']})")
     tech_text = "\n\n".join(tech_lines)
 
-    # 4. Takeaway
-    takeaway_text = (
-        "💡 **架构师晨读手记 (Daily Takeaway)**：\n"
-        "AI 时代已经从单纯的大语言模型问答，全面迈入**自主行动代理 (Agentic Actions)** 与真实工具操控新纪元！"
-        "理解 Browser-Use 等工具将非结构化 UI 转化为状态机动作空间的工程思想，是构建新一代智能化系统的核心竞争力。"
-    )
+    # 4. Agent-generated takeaway grounded in today's sources
+    takeaway_text = "💡 **今日晨读结论**：\n" + generate_news_takeaway(news_data, tech_items)
 
     card = {
         "msg_type": "interactive",
