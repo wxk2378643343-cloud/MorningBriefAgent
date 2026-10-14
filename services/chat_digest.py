@@ -348,37 +348,78 @@ def scan_target_group_chats(chatrooms_map: Dict[str, str], start_ts: int, end_ts
     return target_groups, total_scanned_groups
 
 def analyze_and_reflect(private_chats: List[Dict[str, Any]], group_chats: List[Dict[str, Any]], date_str: str) -> Dict[str, Any]:
-    """Generate high-density analysis and deep self-reflections for all active users."""
-    print("🧠 [Step 4/5] 提炼对话要点并生成深度沟通自省...")
-    
-    # Process all active private friends
+    """Let the local Agent analyze sanitized chat records.
+
+    Python is deliberately limited to extraction, normalization and rendering
+    preparation. Topics, commitments, risks and reflections must come from the
+    Agent response rather than keyword rules embedded in this service.
+    """
+    print("🧠 [Step 4/5] 将结构化沟通记录交给本地 Agent 分析...")
+
+    raw_context = json.dumps(
+        {
+            "date": date_str,
+            "private": private_chats,
+            "groups": group_chats,
+        },
+        ensure_ascii=False,
+        default=str,
+    )[:24000]
+    agent_result = {}
+    try:
+        agent_text = agy_bridge.ask_native_agy(
+            "chat-digest",
+            agent_context.build_prompt(
+                task=(
+                    "分析提供的私聊和群聊记录。返回严格 JSON，不要输出 Markdown："
+                    "{\"private\":[{\"index\":0,\"topics\":[\"事实主题\"],"
+                    "\"action_items\":[\"明确承诺或待跟进事项\"],"
+                    "\"reflection\":\"基于原文的简短观察\","
+                    "\"priority\":\"high|normal|low\"}],"
+                    "\"groups\":[{\"index\":0,\"topic\":\"事实主题\","
+                    "\"action_items\":[\"明确事项\"],"
+                    "\"reflection\":\"基于原文的简短观察\","
+                    "\"priority\":\"high|normal|low\"}],"
+                    "\"overall\":\"不超过三段的整体摘要\"}。"
+                    "只记录原文明确支持的事实；没有明确承诺时返回空数组，"
+                    "不要猜测用户目标、身份、关系、作息或情绪。"
+                ),
+                query=date_str,
+                context=raw_context,
+            ),
+        )
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", agent_text or "", re.DOTALL)
+        raw_json = fenced.group(1) if fenced else (agent_text or "")
+        parsed = json.loads(raw_json)
+        if isinstance(parsed, dict):
+            agent_result = parsed
+    except Exception as exc:
+        print(f"⚠️ Agent 沟通分析暂不可用: {exc}")
+
+    private_analysis = {
+        int(item["index"]): item
+        for item in agent_result.get("private", [])
+        if isinstance(item, dict) and str(item.get("index", "")).isdigit()
+    }
+    group_analysis = {
+        int(item["index"]): item
+        for item in agent_result.get("groups", [])
+        if isinstance(item, dict) and str(item.get("index", "")).isdigit()
+    }
+
     detailed_privates = []
     compact_privates = []
-    
-    for f in private_chats:
-        name = f["name"]
+
+    for index, f in enumerate(private_chats):
+        agent_item = private_analysis.get(index, {})
         sample_msgs = f["messages"]
-        all_text = " ".join([m[2] for m in sample_msgs])
-        
-        topics = ["消息主题由本地 Agent 根据原文分析"]
-            
-        # Promises / Action items
-        action_items = []
-        for m in f["my_messages"]:
-            if any(k in m[2] for k in ["以后", "给你", "回头", "我来", "明天", "记录", "发你", "试试"]):
-                action_items.append(m[2])
-                
-        reflection = "沟通反思由本地 Agent 根据原文和用户目标生成。"
-            
-        # Select high-substance message pairs (not just first 3 greetings)
+        # Select representative excerpts for rendering; this is presentation
+        # logic only and does not infer topics or actions.
         meaningful_msgs = [m for m in sample_msgs if len(m[2]) > 3 and not m[2].startswith("[")]
         if not meaningful_msgs:
             meaningful_msgs = sample_msgs
-        # Pick up to 5 representative dialogue exchanges
         if len(meaningful_msgs) > 5:
-            # pick some from start, middle, and end
             selected_excerpts = [meaningful_msgs[0], meaningful_msgs[len(meaningful_msgs)//2]] + meaningful_msgs[-3:]
-            # deduplicate
             seen = set()
             dedup_excerpts = []
             for item in selected_excerpts:
@@ -391,61 +432,35 @@ def analyze_and_reflect(private_chats: List[Dict[str, Any]], group_chats: List[D
             selected_excerpts = meaningful_msgs
 
         item_data = {
-            "name": name,
+            "name": f["name"],
             "total_count": f["total_count"],
             "my_count": f["my_count"],
             "friend_count": f["friend_count"],
             "time_span": f["time_span"],
-            "topics": "、".join(topics),
+            "topics": "、".join(agent_item.get("topics", [])) or "Agent 未提取到明确主题。",
             "sample_excerpts": selected_excerpts,
             "all_messages": sample_msgs,
-            "action_items": action_items[:2],
-            "reflection": reflection
+            "action_items": agent_item.get("action_items", [])[:3],
+            "reflection": agent_item.get("reflection", "Agent 未生成额外反思。"),
         }
-        
-        # Tier 1: Detailed review for >= 5 messages (rich coverage)
+
         if f["total_count"] >= 5:
             detailed_privates.append(item_data)
         else:
-            # Tier 2: Compact review for < 5 messages
             compact_privates.append(item_data)
-        
-    # Group chat summaries
+
     group_summaries = []
-    for g in group_chats:
-        name = g["name"]
-        is_spoke = g["is_spoke"]
-        my_msgs = g["my_messages"]
-        
-        topic = "群聊主题由本地 Agent 根据原文分析。"
-        reflection = "群聊影响与后续行动由本地 Agent 根据原文分析。"
-            
+    for index, g in enumerate(group_chats):
+        agent_item = group_analysis.get(index, {})
         group_summaries.append({
-            "name": name,
-            "is_spoke": is_spoke,
+            "name": g["name"],
+            "is_spoke": g["is_spoke"],
             "my_count": g["my_count"],
             "total_count": g["total_count"],
-            "my_messages": my_msgs[:4],
-            "topic": topic,
-            "reflection": reflection
+            "my_messages": g["my_messages"][:4],
+            "topic": agent_item.get("topic", "Agent 未提取到明确主题。"),
+            "reflection": agent_item.get("reflection", "Agent 未生成额外反思。"),
         })
-        
-    raw_context = json.dumps(
-        {"private": private_chats, "groups": group_chats},
-        ensure_ascii=False,
-        default=str,
-    )[:24000]
-    try:
-        agent_summary = agy_bridge.ask_native_agy(
-            "chat-digest",
-            agent_context.build_prompt(
-                "分析这段沟通记录，提取事实、承诺、风险和下一步行动。不要猜测未出现的个人目标。",
-                query=date_str,
-                context=raw_context,
-            ),
-        )
-    except Exception:
-        agent_summary = "Agent 分析暂不可用。"
 
     return {
         "date_str": date_str,
@@ -453,7 +468,7 @@ def analyze_and_reflect(private_chats: List[Dict[str, Any]], group_chats: List[D
         "detailed_privates": detailed_privates,
         "compact_privates": compact_privates,
         "group_summaries": group_summaries,
-        "agent_summary": agent_summary,
+        "agent_summary": agent_result.get("overall", "Agent 分析暂不可用。"),
     }
 
 def build_feishu_card(analysis: Dict[str, Any], total_all_groups: int) -> Dict[str, Any]:
