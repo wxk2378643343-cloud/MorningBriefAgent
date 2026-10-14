@@ -93,6 +93,7 @@ Register-DailyWorkflow -Name "DailyTodoMorningPush" -Arguments "main.py todo-mor
 Register-DailyWorkflow -Name "KaoyanMorningBrief" -Arguments "main.py brief" -At "06:30"
 Register-DailyWorkflow -Name "MorningChatDigest" -Arguments "main.py chat" -At "07:00"
 Register-DailyWorkflow -Name "MorningGlobalNews" -Arguments "main.py news" -At "07:45"
+Register-DailyWorkflow -Name "FundDailyAdvisor1400" -Arguments "main.py fund" -At "14:00"
 Register-DailyWorkflow -Name "DailyTodoEveningReview" -Arguments "main.py todo-evening" -At "23:00"
 Register-LogonWorkflow -Name "MorningBriefAgentBot" -Arguments "-m server.feishu_bot_server"
 Register-ReconcileWorkflow
@@ -104,6 +105,7 @@ Get-ScheduledTask |
         "KaoyanMorningBrief",
         "MorningChatDigest",
         "MorningGlobalNews",
+        "FundDailyAdvisor1400",
         "DailyTodoEveningReview",
         "MorningBriefAgentBot",
         "MorningBriefAgentReconcile"

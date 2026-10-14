@@ -451,6 +451,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 | `KaoyanMorningBrief` | 每日 06:30 | 生成晨间知识库简报 |
 | `MorningChatDigest` | 每日 07:00 | 分析本地聊天并生成摘要 |
 | `MorningGlobalNews` | 每日 07:45 | 抓取并总结新闻 |
+| `FundDailyAdvisor1400` | 每日 14:00 | 股票/基金市场两点评估与摘要 |
 | `DailyTodoEveningReview` | 每日 23:00 | 晚间复盘与归档 |
 | `MorningBriefAgentBot` | 用户登录时 | 启动飞书 WebSocket 机器人 |
 | `MorningBriefAgentReconcile` | 每 15 分钟 | 重放到期的 Outbox 记录 |
