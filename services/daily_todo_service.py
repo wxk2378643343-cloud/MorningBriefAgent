@@ -505,6 +505,12 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
 
     if idempotency_key:
         saved = idempotency.store.get(idempotency_key)
+        if saved and saved.get("status") == "succeeded":
+            result = saved.get("result")
+            if isinstance(result, dict):
+                result = dict(result)
+                result["reused"] = True
+            return result
         if saved and saved.get("provider_id"):
             return {"id": saved["provider_id"], "task_id": saved["provider_id"],
                     "summary": summary, "reused": True}
@@ -517,18 +523,31 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
                 if et.get("complete_time") == "0" and et.get("summary", "").strip() == summary:
                     provider_id = et.get("id")
                     if idempotency_key and provider_id:
-                        idempotency.store.put(idempotency_key, {"provider_id": provider_id})
+                        result = {"task_id": provider_id, "id": provider_id,
+                                  "summary": summary, "reused": True}
+                        idempotency.store.put(
+                            idempotency_key,
+                            {"status": "succeeded", "result": result},
+                        )
+                        return result
                     return {"task_id": provider_id, "id": provider_id,
                             "summary": summary, "reused": True}
         except Exception as de:
             pass
 
     try:
-        task_data = feishu_gateway.create_task(summary, description, due_timestamp)
+        if idempotency_key:
+            task_data, reused = idempotency.store.execute_once(
+                idempotency_key,
+                lambda: feishu_gateway.create_task(summary, description, due_timestamp),
+                success=lambda result: bool(result),
+            )
+            if isinstance(task_data, dict) and reused:
+                task_data = dict(task_data)
+                task_data["reused"] = True
+        else:
+            task_data = feishu_gateway.create_task(summary, description, due_timestamp)
         if task_data:
-            provider_id = task_data.get("id") or task_data.get("task_id")
-            if idempotency_key and provider_id:
-                idempotency.store.put(idempotency_key, {"provider_id": provider_id})
             return task_data
     except Exception as e:
         print(f"⚠️ 创建飞书任务网络异常: {e}")
@@ -799,20 +818,19 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
                 "feishu-calendar", target_date_str, s.get("name", ""),
                 s.get("start", ""), s.get("end", ""), s.get("summary", "")
             )
-            saved = idempotency.store.get(key)
-            if saved and saved.get("provider_id"):
-                written_count += 1
-                continue
-            ok, ev_id = feishu_gateway.create_calendar_event(
-                summary=s["summary"],
-                start_dt=s_dt,
-                end_dt=e_dt,
-                description=s.get("desc", s["summary"]),
-                reminder_minutes=15
+            result, _ = idempotency.store.execute_once(
+                key,
+                lambda: feishu_gateway.create_calendar_event(
+                    summary=s["summary"],
+                    start_dt=s_dt,
+                    end_dt=e_dt,
+                    description=s.get("desc", s["summary"]),
+                    reminder_minutes=15,
+                ),
+                success=lambda value: bool(value and value[0]),
             )
+            ok, ev_id = result
             if ok:
-                if ev_id:
-                    idempotency.store.put(key, {"provider_id": ev_id})
                 written_count += 1
         except Exception as se:
             print(f"写入日历槽位异常 ({s.get('name')}): {se}")

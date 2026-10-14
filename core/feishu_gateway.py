@@ -24,12 +24,12 @@ class FeishuGateway:
         The local record is written only after the provider acknowledges
         success, so ordinary failed requests remain retryable.
         """
-        if idempotency.store.get(key):
-            return True
-        sent = self.client.send_card(card)
-        if sent:
-            idempotency.store.put(key, {"provider": "feishu", "sent": True})
-        return sent
+        sent, _ = idempotency.store.execute_once(
+            key,
+            lambda: self.client.send_card(card),
+            success=lambda result: result is True,
+        )
+        return bool(sent)
 
     # Task and calendar operations intentionally stay behind this facade so
     # services do not know which provider adapter implements them.

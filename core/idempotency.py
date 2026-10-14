@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import threading
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Optional
 
@@ -107,6 +108,42 @@ class IdempotencyStore:
                 (key, encoded),
             )
             connection.commit()
+
+    def execute_once(
+        self,
+        key: str,
+        operation: Callable[[], Any],
+        success: Callable[[Any], bool] = bool,
+    ) -> tuple[Any, bool]:
+        """Run a side effect once and return ``(result, reused)``.
+
+        Pending and failed records remain retryable. A successful record is
+        reused, which centralizes the same check/execute/save pattern for
+        tasks, calendar events, and cards.
+        """
+        existing = self.get(key)
+        if isinstance(existing, dict) and existing.get("status") == "succeeded":
+            return existing.get("result"), True
+
+        self.put(key, {"status": "pending", "attempts": self._attempts(existing) + 1})
+        try:
+            result = operation()
+            if success(result):
+                self.put(key, {"status": "succeeded", "result": result})
+            else:
+                self.put(key, {"status": "failed", "result": result})
+            return result, False
+        except Exception as exc:
+            self.put(key, {
+                "status": "failed",
+                "error": type(exc).__name__,
+                "message": str(exc)[:300],
+            })
+            raise
+
+    @staticmethod
+    def _attempts(value: Any) -> int:
+        return int(value.get("attempts", 0)) if isinstance(value, dict) else 0
 
 
 store = IdempotencyStore()

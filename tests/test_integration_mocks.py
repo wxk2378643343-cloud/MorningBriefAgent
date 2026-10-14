@@ -107,6 +107,22 @@ class MockIntegrationTests(unittest.TestCase):
             self.assertEqual(migrated.get("legacy-key")["provider_id"], "old-1")
             self.assertTrue((Path(tmp) / "idempotency.json.migrated").exists())
 
+    def test_execute_once_deduplicates_side_effects(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            calls = []
+
+            def operation():
+                calls.append("called")
+                return {"provider_id": "one"}
+
+            first, reused = store.execute_once("same", operation)
+            second, reused_again = store.execute_once("same", operation)
+            self.assertEqual(first, second)
+            self.assertFalse(reused)
+            self.assertTrue(reused_again)
+            self.assertEqual(calls, ["called"])
+
     def test_task_sync_reuses_stable_idempotency_key(self):
         class FakeTasks:
             def __init__(self):
