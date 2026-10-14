@@ -28,26 +28,18 @@ if sys.platform == "win32":
         pass
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-CORE_DIR = os.path.join(PROJECT_ROOT, "core")
-if CORE_DIR not in sys.path:
-    sys.path.insert(0, CORE_DIR)
 
-import config
-import agent_context
-import agent_provider
-import feishu_calendar
-import idempotency
-from contracts import AgentPlan
-from feishu_gateway import feishu_gateway
-from feishu_client import feishu_client
+from core.runtime import config
+from core.agent import context as agent_context
+from core.agent import provider as agent_provider
+from core.integrations.feishu import calendar as feishu_calendar
+from core.integrations.feishu import idempotency
+from core.agent.contracts import AgentPlan
+from core.integrations.feishu.gateway import feishu_gateway
+from core.integrations.feishu.client import feishu_client
 
 SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
-if SERVICES_DIR not in sys.path:
-    sys.path.insert(0, SERVICES_DIR)
-
-import review_sync_service
+from . import review_sync as review_sync_service
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 STAGED_PLAN_FILE = os.path.join(DATA_DIR, "staged_plan.json")

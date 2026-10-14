@@ -9,15 +9,12 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "core"))
-sys.path.insert(0, str(ROOT / "services"))
-
-import agent_provider
-import global_news
-import idempotency
-import daily_todo_service
-from contracts import AgentPlan
-from feishu_task_gateway import FeishuTaskGateway
+from core.agent import provider as agent_provider
+from services.content import global_news
+from core.integrations.feishu import idempotency
+from services.planning import daily_todo as daily_todo_service
+from core.agent.contracts import AgentPlan
+from core.integrations.feishu.task_gateway import FeishuTaskGateway
 
 
 class FakeResponse:

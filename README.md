@@ -253,6 +253,13 @@ MorningBriefAgent/
 └─ main.py               # 统一 CLI
 ```
 
+内部模块统一使用包路径，例如：
+
+```python
+from services.planning.daily_todo import morning_routine
+from core.integrations.feishu.gateway import feishu_gateway
+```
+
 `tests/manual_*.py` 和 `tests/check_*.py` 会访问本地服务、数据库或真实 Vault，只能手动运行，不属于默认单元测试。
 
 ## 安全与隐私

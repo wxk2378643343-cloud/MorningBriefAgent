@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any, Optional
 
 try:
-    from . import config
+    from ...runtime import config
 except ImportError:
-    import config
+    from core.runtime import config
 
 
 def make_key(namespace: str, *parts: object) -> str:

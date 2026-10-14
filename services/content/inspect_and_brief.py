@@ -16,14 +16,13 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(PROJECT_ROOT), str(PROJECT_ROOT / "core")]
 
-import agent_context
-import agent_provider
-import config
-from email_analyzer import get_latest_high_value_email_digest
-from feishu_gateway import feishu_gateway
-from idempotency import make_key
+from core.agent import context as agent_context
+from core.agent import provider as agent_provider
+from core.runtime import config
+from core.parsers.email_analyzer import get_latest_high_value_email_digest
+from core.integrations.feishu.gateway import feishu_gateway
+from core.integrations.feishu.idempotency import make_key
 
 
 def collect_brief_data() -> Dict[str, Any]:

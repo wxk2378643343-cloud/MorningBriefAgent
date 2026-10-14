@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import TypeVar
 
-from integration_errors import RetryableIntegrationError
+from .errors import RetryableIntegrationError
 
 T = TypeVar("T")
 

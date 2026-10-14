@@ -8,12 +8,9 @@ from pathlib import Path
 from unittest import mock
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT / "core"))
-
-import config
-import agent_provider
-sys.path.insert(0, str(PROJECT_ROOT / "services"))
-import review_sync_service
+from core.runtime import config
+from core.agent import provider as agent_provider
+from services.planning import review_sync as review_sync_service
 
 
 class ConfigSecurityTests(unittest.TestCase):
@@ -57,7 +54,7 @@ class ConfigSecurityTests(unittest.TestCase):
         self.assertNotRegex(content, r"FEISHU_APP_SECRET=(?!your_)[^\r\n]+")
 
     def test_source_has_no_feishu_secret_default(self):
-        content = (PROJECT_ROOT / "core" / "config.py").read_text(encoding="utf-8")
+        content = (PROJECT_ROOT / "core" / "runtime" / "config.py").read_text(encoding="utf-8")
         self.assertNotRegex(
             content,
             r'FEISHU_APP_SECRET\s*=\s*os\.getenv\([^,]+,\s*"[^"]+"\)',

@@ -24,18 +24,13 @@ if sys.platform == "win32":
         pass
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-CORE_DIR = os.path.join(PROJECT_ROOT, "core")
-if CORE_DIR not in sys.path:
-    sys.path.insert(0, CORE_DIR)
 
-import config
-import agent_context
-import agent_provider
-import feishu_calendar
-from feishu_gateway import feishu_gateway
-from idempotency import make_key
+from core.runtime import config
+from core.agent import context as agent_context
+from core.agent import provider as agent_provider
+from core.integrations.feishu import calendar as feishu_calendar
+from core.integrations.feishu.gateway import feishu_gateway
+from core.integrations.feishu.idempotency import make_key
 
 FITNESS_PLAN_PATH = config.FITNESS_PLAN_PATH
 FITNESS_LOG_PATH = config.FITNESS_LOG_PATH

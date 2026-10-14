@@ -9,13 +9,13 @@ from __future__ import annotations
 from typing import Any, Optional
 
 import requests
-from integration_errors import ProviderResponseError, RetryableIntegrationError
-from retry import retry_call
+from .errors import ProviderResponseError, RetryableIntegrationError
+from .retry import retry_call
 
 try:
-    from . import config
+    from ...runtime import config
 except ImportError:
-    import config
+    from core.runtime import config
 
 
 class FeishuTaskGateway:

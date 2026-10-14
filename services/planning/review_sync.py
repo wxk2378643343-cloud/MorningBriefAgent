@@ -23,13 +23,8 @@ if sys.platform == "win32":
         pass
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-CORE_DIR = os.path.join(PROJECT_ROOT, "core")
-if CORE_DIR not in sys.path:
-    sys.path.insert(0, CORE_DIR)
 
-import config
+from core.runtime import config
 
 VAULT_ROOT = config.VAULT_ROOT
 DAILY_DIR = config.REVIEW_DAILY_DIR

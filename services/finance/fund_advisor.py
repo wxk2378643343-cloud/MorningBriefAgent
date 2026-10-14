@@ -32,14 +32,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger("FundDailyAdvisor")
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CORE_DIR = os.path.join(PROJECT_ROOT, "core")
-for path in (PROJECT_ROOT, CORE_DIR):
-    if path not in sys.path:
-        sys.path.insert(0, path)
 
-import config
-from feishu_gateway import feishu_gateway
-from idempotency import make_key
+from core.runtime import config
+from core.integrations.feishu.gateway import feishu_gateway
+from core.integrations.feishu.idempotency import make_key
 
 BENCHMARK_SYMBOLS = ["sh000001", "sz399006", "hkHSI"]
 

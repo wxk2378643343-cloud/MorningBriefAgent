@@ -10,10 +10,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / "core"))
-
-import config
-from feishu_task_gateway import FeishuTaskGateway
+from core.runtime import config
+from core.integrations.feishu.task_gateway import FeishuTaskGateway
 
 
 @unittest.skipUnless(

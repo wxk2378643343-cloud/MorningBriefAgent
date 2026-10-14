@@ -17,9 +17,9 @@ from typing import Optional, Tuple
 logger = logging.getLogger("AGYBridge")
 
 try:
-    from . import config
+    from ..runtime import config
 except ImportError:
-    import config
+    from core.runtime import config
 
 IS_WSL = sys.platform != "win32" and os.path.exists("/mnt/c")
 AGENTAPI_EXE = config.AGENTAPI_EXE

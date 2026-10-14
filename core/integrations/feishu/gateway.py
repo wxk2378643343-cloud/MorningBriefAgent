@@ -5,17 +5,15 @@ from __future__ import annotations
 from typing import Any, Optional
 
 try:
-    from . import feishu_calendar, feishu_client, idempotency
-    from .feishu_task_gateway import task_gateway
+    from . import calendar, client, idempotency
+    from .task_gateway import task_gateway
 except ImportError:
-    import feishu_calendar
-    import feishu_client
-    import idempotency
-    from feishu_task_gateway import task_gateway
+    from core.integrations.feishu import calendar, client, idempotency
+    from core.integrations.feishu.task_gateway import task_gateway
 
 
 class FeishuGateway:
-    def __init__(self, client: Any = feishu_client.feishu_client):
+    def __init__(self, client: Any = client.feishu_client):
         self.client = client
 
     def send_card_once(self, card: dict, key: str) -> bool:
@@ -47,7 +45,7 @@ class FeishuGateway:
         return task_gateway.delete(task_id)
 
     def create_calendar_event(self, **kwargs):
-        return feishu_calendar.calendar_mgr.create_silent_event(**kwargs)
+        return calendar.calendar_mgr.create_silent_event(**kwargs)
 
 
 feishu_gateway = FeishuGateway()

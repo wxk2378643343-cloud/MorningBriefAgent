@@ -13,15 +13,15 @@ import time
 import requests
 import logging
 from typing import Optional, Dict, Any
-from integration_errors import RetryableIntegrationError
-from retry import retry_call
+from .errors import RetryableIntegrationError
+from .retry import retry_call
 
 logger = logging.getLogger("FeishuClient")
 
 try:
-    from . import config
+    from ...runtime import config
 except ImportError:
-    import config
+    from core.runtime import config
 
 class FeishuClient:
     """Official Feishu OpenAPI Client (爪爪openclaw)."""

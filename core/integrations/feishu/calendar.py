@@ -18,8 +18,8 @@ import urllib.parse
 import urllib.error
 import datetime
 from typing import Dict, Any, Optional, List, Tuple
-from integration_errors import RetryableIntegrationError
-from retry import retry_call
+from .errors import RetryableIntegrationError
+from .retry import retry_call
 
 if hasattr(sys.stdout, 'buffer'):
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
@@ -27,9 +27,9 @@ if hasattr(sys.stderr, 'buffer'):
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
 
 try:
-    from . import config
+    from ...runtime import config
 except ImportError:
-    import config
+    from core.runtime import config
 
 class FeishuCalendarManager:
     """Manages Feishu Calendar via OpenAPI v4."""

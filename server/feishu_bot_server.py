@@ -64,13 +64,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("AGYFeishuBot")
 
-# Ensure project root, core, and services are in sys.path
-CORE_DIR = os.path.join(PROJECT_ROOT, "core")
-SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-for p in [PROJECT_ROOT, CORE_DIR, SERVICES_DIR, DATA_DIR]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 import lark_oapi as lark
 from lark_oapi.ws import Client as WsClient
@@ -78,11 +72,11 @@ from lark_oapi.api.im.v1 import *
 from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 
-import config
-import feishu_calendar
-import agy_bridge
-import daily_todo_service
-import agent_context
+from core.runtime import config
+from core.integrations.feishu import calendar as feishu_calendar
+from core.agent import agy_bridge
+from services.planning import daily_todo as daily_todo_service
+from core.agent import context as agent_context
 
 VAULT_ROOT = config.VAULT_ROOT
 

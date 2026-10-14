@@ -6,9 +6,9 @@ from pathlib import Path
 
 if __name__ == "__main__":
     root = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(root / "server"))
+    sys.path.insert(0, str(root))
     try:
-        import feishu_bot_server
+        from server import feishu_bot_server
         feishu_bot_server.run_server()
     except Exception:
         log_dir = root / "logs"

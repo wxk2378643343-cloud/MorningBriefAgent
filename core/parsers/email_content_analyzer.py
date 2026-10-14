@@ -183,7 +183,7 @@ def get_latest_high_value_email_digest(
     return analyzed_results
 
 if __name__ == "__main__":
-    import config
+    from core.runtime import config
     vault_root = config.VAULT_ROOT
     digests = get_latest_high_value_email_digest(vault_root)
     print(f"✅ 成功解析 {len(digests)} 篇高质量订阅邮件：")

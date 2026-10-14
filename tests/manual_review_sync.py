@@ -12,7 +12,7 @@ SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
 if SERVICES_DIR not in sys.path:
     sys.path.insert(0, SERVICES_DIR)
 
-import review_sync_service
+from services.planning import review_sync as review_sync_service
 
 def main():
     today_str = "2026-10-14"

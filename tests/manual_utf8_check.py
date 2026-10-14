@@ -5,8 +5,8 @@ import json
 if __name__ == "__main__":
     from pathlib import Path
     root = Path(__file__).resolve().parent.parent
-    sys.path.insert(0, str(root / "core"))
-    import config
+    sys.path.insert(0, str(root))
+    from core.runtime import config
 
     if not config.AGENTAPI_EXE:
         raise SystemExit("请先在 .env 配置 AGENTAPI_EXE")

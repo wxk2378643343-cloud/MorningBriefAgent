@@ -13,7 +13,7 @@ from typing import Any, Optional
 try:
     from . import agy_bridge
 except ImportError:
-    import agy_bridge
+    from core.agent import agy_bridge
 
 
 def ask_text(task: str, prompt: str, context: str = "") -> str:

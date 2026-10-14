@@ -7,18 +7,7 @@ MorningBriefAgent - 统一调度与管理控制台 (CLI)
 """
 
 import sys
-import os
 import argparse
-
-# 确保项目根目录与子模块在导入搜索路径中
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-CORE_DIR = os.path.join(PROJECT_ROOT, "core")
-SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
-SERVER_DIR = os.path.join(PROJECT_ROOT, "server")
-
-for p in [PROJECT_ROOT, CORE_DIR, SERVICES_DIR, SERVER_DIR]:
-    if p not in sys.path:
-        sys.path.insert(0, p)
 
 if sys.platform == "win32":
     try:
@@ -30,43 +19,43 @@ if sys.platform == "win32":
 
 def run_inspect():
     print("🚀 [MorningBriefAgent] 启动知识库与早间综合简报...")
-    from services.inspect_and_brief import main
+    from services.content.inspect_and_brief import main
     main()
 
 
 def run_chat():
     print("🚀 [MorningBriefAgent] 启动微信聊天多模态深度复盘...")
-    from services.chat_digest import main
+    from services.communications.chat_digest import main
     main()
 
 
 def run_news():
     print("🚀 [MorningBriefAgent] 启动全球与科技要闻中文精选...")
-    from services.global_news import main
+    from services.content.global_news import main
     main()
 
 
 def run_fitness():
     print("🚀 [MorningBriefAgent] 启动健身训练与热量摄入顾问...")
-    from services.fitness_daily import main
+    from services.lifestyle.fitness_daily import main
     main()
 
 
 def run_fund():
     print("🚀 [MorningBriefAgent] 启动本地配置与市场摘要...")
-    from services.fund_daily_advisor import main
+    from services.finance.fund_advisor import main
     main()
 
 
 def run_todo_morning():
     print("🚀 [MorningBriefAgent] 启动早间待办与日程协同推送...")
-    from services.daily_todo_service import morning_routine
+    from services.planning.daily_todo import morning_routine
     morning_routine()
 
 
 def run_todo_evening():
     print("🚀 [MorningBriefAgent] 启动晚间待办复盘与成果归档...")
-    from services.daily_todo_service import evening_routine
+    from services.planning.daily_todo import evening_routine
     evening_routine()
 
 
@@ -76,7 +65,7 @@ def run_bot():
     start_bot()
 
 def run_doctor():
-    from core.doctor import main as doctor_main
+    from core.runtime.doctor import main as doctor_main
     doctor_main()
 
 
