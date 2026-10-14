@@ -434,7 +434,30 @@ Start-Process -WindowStyle Hidden `
 
 ## Windows 计划任务
 
-创建 Windows 计划任务时建议：
+项目提供一个不依赖 `.bat` 的注册脚本。它会把业务工作流和可靠性对账注册为 Windows 计划任务；Agent 不作为独立任务运行，而是在晨报、待办、新闻和聊天复盘流程中按需调用。
+
+首次配置或迁移到新机器时，在项目根目录执行：
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\register_windows_tasks.ps1
+```
+
+默认任务如下：
+
+| 任务 | 时间/触发方式 | 作用 |
+| --- | --- | --- |
+| `DailyTodoMorningPush` | 每日 06:00 | Agent 生成并同步早间待办与日程 |
+| `KaoyanMorningBrief` | 每日 06:30 | 生成晨间知识库简报 |
+| `MorningChatDigest` | 每日 07:00 | 分析本地聊天并生成摘要 |
+| `MorningGlobalNews` | 每日 07:45 | 抓取并总结新闻 |
+| `DailyTodoEveningReview` | 每日 23:00 | 晚间复盘与归档 |
+| `MorningBriefAgentBot` | 用户登录时 | 启动飞书 WebSocket 机器人 |
+| `MorningBriefAgentReconcile` | 每 15 分钟 | 重放到期的 Outbox 记录 |
+
+如果不使用某项本地数据，只需在 `.env` 中取消对应目录配置；任务仍可安全跳过该能力并记录诊断信息。
+
+手动创建任务时建议：
 
 1. 使用当前仓库的绝对路径作为“起始于”目录；
 2. 使用虚拟环境中的 Python；
