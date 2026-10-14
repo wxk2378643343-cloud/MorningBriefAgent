@@ -533,7 +533,12 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
         if idempotency_key:
             sync_outbox.begin(
                 idempotency_key, "feishu.task",
-                {"idempotency_key": idempotency_key},
+                {
+                    "idempotency_key": idempotency_key,
+                    "summary": summary,
+                    "description": description,
+                    "due_timestamp": due_timestamp,
+                },
             )
             task_data, reused = idempotency.store.execute_once(
                 idempotency_key,

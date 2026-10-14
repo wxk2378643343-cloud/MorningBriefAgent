@@ -16,6 +16,8 @@ from services.planning import daily_todo as daily_todo_service
 from core.agent.contracts import AgentPlan
 from core.integrations.feishu.task_gateway import FeishuTaskGateway
 from core.integrations.feishu.gateway import FeishuGateway
+from core.integrations.sync_outbox import SyncOutbox
+from core.integrations.reconcile import reconcile_pending
 
 
 class FakeResponse:
@@ -156,6 +158,36 @@ class MockIntegrationTests(unittest.TestCase):
 
         gateway = FeishuGateway(FakeClient())
         self.assertTrue(gateway.reply_text("msg-1", "ok"))
+
+    def test_reconcile_replays_failed_card_without_duplicate_provider_call(self):
+        class FakeClient:
+            def __init__(self):
+                self.cards = []
+
+            def send_card(self, card):
+                self.cards.append(card)
+                return True
+
+        with tempfile.TemporaryDirectory() as tmp:
+            store = idempotency.IdempotencyStore(Path(tmp) / "keys.sqlite3")
+            outbox = SyncOutbox(store)
+            key = "card-replay"
+            card = {"elements": [{"tag": "div"}]}
+            outbox.begin(key, "feishu.card", {"idempotency_key": key, "card": card})
+            outbox.finish(key, False, "temporary outage")
+            client = FakeClient()
+            gateway = FeishuGateway(client)
+
+            result = reconcile_pending(
+                outbox=outbox, gateway=gateway, idempotency_store=store
+            )
+            again = reconcile_pending(
+                outbox=outbox, gateway=gateway, idempotency_store=store
+            )
+
+            self.assertEqual(result["recovered"], 1)
+            self.assertEqual(again["examined"], 0)
+            self.assertEqual(client.cards, [card])
 
     def test_calendar_sync_does_not_delete_unrelated_events(self):
         class FakeCalendar:

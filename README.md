@@ -261,7 +261,9 @@ from core.integrations.feishu.gateway import feishu_gateway
 ```
 
 跨系统同步会记录到本地 SQLite Outbox；可通过 `python main.py doctor`
-查看待重试或待对账记录。Feishu 请求和机器人消息会输出不含正文的
+查看待重试或待对账记录，并用 `python main.py reconcile` 重放失败的
+卡片、任务和日历写入。重放使用原始本地 payload 和同一套幂等键，
+成功记录不会重复写入。Feishu 请求和机器人消息会输出不含正文的
 correlation ID、耗时和成功/失败事件，便于定位部分失败。
 
 `tests/manual_*.py` 和 `tests/check_*.py` 会访问本地服务、数据库或真实 Vault，只能手动运行，不属于默认单元测试。
@@ -291,7 +293,8 @@ git grep -n -I -E "FEISHU_APP_SECRET=.+|cli_[A-Za-z0-9]{12,}|ou_[A-Za-z0-9]{12,}
 - 新闻和行情依赖第三方公开源，缺少缓存、重试和数据源健康监控；
 - AGY 桥接依赖本地进程与转录日志，不是稳定的公开 SDK；
 - 真实飞书测试默认关闭，需要显式设置 `RUN_LIVE_INTEGRATION=1`；
-- 兼容入口暂时保留旧模块名，后续可逐步迁移外部脚本到包路径；
+- `python main.py reconcile` 是显式对账入口；尚未启用常驻后台 Outbox worker；
+- 外部系统出现“请求已成功但响应丢失”时，仍需依赖 provider 侧查询或人工核对；
 - 采用 MIT License，可自由使用、修改与分发，但需保留版权与许可声明。
 
 ## 适合贡献的方向

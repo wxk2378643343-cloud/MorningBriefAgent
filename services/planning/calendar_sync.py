@@ -18,7 +18,19 @@ def sync_plan_to_calendar(plan_data: dict[str, Any], gateway) -> int:
         key = idempotency.make_key(
             "feishu-calendar", plan.date, slot.name, slot.start, slot.end, slot.summary
         )
-        sync_outbox.begin(key, "feishu.calendar", {"date": plan.date, "slot_key": key})
+        sync_outbox.begin(
+            key,
+            "feishu.calendar",
+            {
+                "date": plan.date,
+                "slot_key": key,
+                "name": slot.name,
+                "start": slot.start,
+                "end": slot.end,
+                "summary": slot.summary,
+                "description": slot.desc or slot.summary,
+            },
+        )
         try:
             start = datetime.datetime.combine(
                 target_date, datetime.time.fromisoformat(slot.start)

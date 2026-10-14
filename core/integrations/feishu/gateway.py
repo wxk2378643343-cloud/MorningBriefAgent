@@ -23,7 +23,11 @@ class FeishuGateway:
         The local record is written only after the provider acknowledges
         success, so ordinary failed requests remain retryable.
         """
-        sync_outbox.begin(key, "feishu.card", {"idempotency_key": key})
+        sync_outbox.begin(
+            key,
+            "feishu.card",
+            {"idempotency_key": key, "card": card},
+        )
         try:
             sent, _ = idempotency.store.execute_once(
                 key,

@@ -69,6 +69,16 @@ def run_doctor():
     doctor_main()
 
 
+def run_reconcile():
+    from core.integrations.reconcile import reconcile_pending
+    result = reconcile_pending()
+    print(
+        "🔁 Outbox 对账完成："
+        f"检查 {result['examined']}，恢复 {result['recovered']}，"
+        f"失败 {result['failed']}，剩余 {result['remaining']}"
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(
         prog="python main.py",
@@ -85,6 +95,7 @@ def main():
   todo-evening      晚间待办完成度复盘与成果流水账归档
   bot / server      飞书机器人长驻服务 (WebSocket 双向交互)
   doctor            检查本地配置与依赖状态
+  reconcile         重放失败的飞书卡片、任务和日历同步
 
 示例:
   python main.py brief
@@ -97,7 +108,11 @@ def main():
         "command",
         nargs="?",
         default="help",
-        help="待执行的业务指令 (brief, chat, news, fitness, fund, todo-morning, todo-evening, bot)"
+        help=(
+            "待执行的业务指令 "
+            "(brief, chat, news, fitness, fund, todo-morning, todo-evening, "
+            "bot, doctor, reconcile)"
+        )
     )
 
     args = parser.parse_args()
@@ -115,6 +130,7 @@ def main():
         "bot": run_bot,
         "server": run_bot,
         "doctor": run_doctor,
+        "reconcile": run_reconcile,
     }
 
     if cmd in cmd_map:
