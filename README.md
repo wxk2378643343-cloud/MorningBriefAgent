@@ -142,6 +142,7 @@ TODO_ARCHIVE_DIR=D:\path\to\knowledge-base\plan-archive
 REVIEW_DAILY_DIR=D:\path\to\knowledge-base\reviews\daily
 REVIEW_WEEKLY_DIR=D:\path\to\knowledge-base\reviews\weekly
 REVIEW_MONTHLY_DIR=D:\path\to\knowledge-base\reviews\monthly
+STAGED_PLAN_PATH=D:\path\to\MorningBriefAgent\data\staged_plan.json
 FITNESS_PLAN_PATH=D:\path\to\knowledge-base\activity-plan.md
 FITNESS_LOG_PATH=D:\path\to\knowledge-base\activity-log.md
 FITNESS_ARCHIVE_DIR=D:\path\to\knowledge-base\activity-archive

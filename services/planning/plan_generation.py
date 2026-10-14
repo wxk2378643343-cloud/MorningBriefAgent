@@ -1,0 +1,89 @@
+"""Agent-backed plan generation and staged-plan persistence."""
+
+from __future__ import annotations
+
+import json
+import os
+from datetime import date
+from pathlib import Path
+from typing import Any, Dict, List
+
+from core.agent import context as agent_context
+from core.agent import provider as agent_provider
+from core.agent.contracts import AgentPlan
+from core.runtime import config
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_STAGED_PLAN_FILE = Path(config.STAGED_PLAN_PATH)
+
+
+def get_default_baseline_todos() -> List[str]:
+    """Return no personal defaults; the local agent supplies the plan."""
+    return []
+
+
+def get_default_schedule_slots(target_date: date) -> List[Dict[str, str]]:
+    """Return no hard-coded personal schedule."""
+    return []
+
+
+def generate_agent_plan(target_date: str) -> Dict[str, Any]:
+    """Ask the local agent for a validated plan based on configured context."""
+    prompt = agent_context.build_prompt(
+        task=(
+            "为指定日期生成一个可执行计划，只能使用本地资料中明确存在的目标和约束。"
+            "输出严格 JSON：{\"todos\": [\"...\"], \"schedule_slots\": "
+            "[{\"name\":\"...\",\"start\":\"HH:MM\",\"end\":\"HH:MM\","
+            "\"summary\":\"...\",\"desc\":\"...\"}]}。资料不足时返回空数组，"
+            "不要自行发明学习、运动、工作或生活目标。"
+        ),
+        query=f"请为 {target_date} 生成计划。",
+    )
+    try:
+        data = agent_provider.ask_json("daily-plan", prompt)
+        if isinstance(data, dict):
+            data.setdefault("todos", [])
+            data.setdefault("schedule_slots", [])
+            data["date"] = target_date
+            try:
+                return AgentPlan.from_dict(data, target_date).to_dict()
+            except ValueError as exc:
+                print(f"⚠️ Agent 计划契约校验失败: {exc}")
+    except Exception as exc:
+        print(f"Agent plan unavailable: {exc}")
+    return {"date": target_date, "todos": [], "schedule_slots": []}
+
+
+def load_staged_plan(path: os.PathLike[str] | str | None = None) -> Dict[str, Any]:
+    target = Path(path or config.STAGED_PLAN_PATH or DEFAULT_STAGED_PLAN_FILE)
+    if not target.exists():
+        return {}
+    try:
+        return json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_staged_plan(
+    data: Dict[str, Any],
+    path: os.PathLike[str] | str | None = None,
+) -> None:
+    target = Path(path or config.STAGED_PLAN_PATH or DEFAULT_STAGED_PLAN_FILE)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        print(f"Error saving staged plan: {exc}")
+
+
+__all__ = [
+    "generate_agent_plan",
+    "get_default_baseline_todos",
+    "get_default_schedule_slots",
+    "load_staged_plan",
+    "save_staged_plan",
+]

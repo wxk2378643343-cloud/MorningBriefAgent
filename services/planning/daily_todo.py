@@ -12,7 +12,6 @@ Daily Todo & Schedule Service (Unified Planning & Evening Review Agent)
 import os
 import sys
 import io
-import json
 import re
 import sqlite3
 import datetime
@@ -30,15 +29,13 @@ if sys.platform == "win32":
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from core.runtime import config
-from core.agent import context as agent_context
-from core.agent import provider as agent_provider
 from core.integrations.feishu import calendar as feishu_calendar
 from core.integrations.feishu import idempotency
-from core.agent.contracts import AgentPlan
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.client import feishu_client
 from core.integrations.sync_outbox import sync_outbox
 from . import feishu_tasks
+from . import plan_generation
 
 
 def delete_feishu_task(task_id: str) -> bool:
@@ -78,9 +75,7 @@ from . import review_sync as review_sync_service
 from . import calendar_sync, task_sync
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
-STAGED_PLAN_FILE = os.path.join(DATA_DIR, "staged_plan.json")
-if not os.path.exists(STAGED_PLAN_FILE) and os.path.exists(os.path.join(PROJECT_ROOT, "staged_plan.json")):
-    STAGED_PLAN_FILE = os.path.join(PROJECT_ROOT, "staged_plan.json")
+STAGED_PLAN_FILE = str(plan_generation.DEFAULT_STAGED_PLAN_FILE)
 
 ARCHIVE_DIR = config.TODO_ARCHIVE_DIR
 
@@ -114,58 +109,17 @@ def sync_wechat_database() -> bool:
     except Exception:
         return False
 
-# --- 1. Agent-generated plan inputs ---
-def get_default_baseline_todos() -> List[str]:
-    """Return no personal defaults; the local agent supplies the plan."""
-    return []
-
-# --- 2. Schedule slots are supplied by the agent or staged plan ---
-def get_default_schedule_slots(target_date: datetime.date) -> List[Dict[str, str]]:
-    return []
+get_default_baseline_todos = plan_generation.get_default_baseline_todos
+get_default_schedule_slots = plan_generation.get_default_schedule_slots
+generate_agent_plan = plan_generation.generate_agent_plan
 
 
-def generate_agent_plan(target_date: str) -> Dict[str, Any]:
-    """Ask the local agent for a JSON plan based on the configured context."""
-    prompt = agent_context.build_prompt(
-        task=(
-            "为指定日期生成一个可执行计划，只能使用本地资料中明确存在的目标和约束。"
-            "输出严格 JSON：{\"todos\": [\"...\"], \"schedule_slots\": "
-            "[{\"name\":\"...\",\"start\":\"HH:MM\",\"end\":\"HH:MM\","
-            "\"summary\":\"...\",\"desc\":\"...\"}]}。资料不足时返回空数组，"
-            "不要自行发明学习、运动、工作或生活目标。"
-        ),
-        query=f"请为 {target_date} 生成计划。",
-    )
-    try:
-        data = agent_provider.ask_json("daily-plan", prompt)
-        if isinstance(data, dict):
-            data.setdefault("todos", [])
-            data.setdefault("schedule_slots", [])
-            data["date"] = target_date
-            try:
-                return AgentPlan.from_dict(data, target_date).to_dict()
-            except ValueError as exc:
-                print(f"⚠️ Agent 计划契约校验失败: {exc}")
-    except Exception as exc:
-        print(f"Agent plan unavailable: {exc}")
-    return {"date": target_date, "todos": [], "schedule_slots": []}
-
-# --- 3. Staged Plan Helper ---
 def load_staged_plan() -> Dict[str, Any]:
-    if os.path.exists(STAGED_PLAN_FILE):
-        try:
-            with open(STAGED_PLAN_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-    return {}
+    return plan_generation.load_staged_plan(STAGED_PLAN_FILE)
 
-def save_staged_plan(data: Dict[str, Any]):
-    try:
-        with open(STAGED_PLAN_FILE, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        print(f"Error saving staged plan: {e}")
+
+def save_staged_plan(data: Dict[str, Any]) -> None:
+    plan_generation.save_staged_plan(data, STAGED_PLAN_FILE)
 
 # --- 4. Extract Candidates from WeChat/Feishu Chat Logs ---
 # --- 4. Extract Candidates from WeChat/Feishu Chat Logs & Unfinished Todos ---
