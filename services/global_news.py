@@ -37,10 +37,10 @@ from feishu_client import feishu_client
 
 LOCAL_PROXY = config.LOCAL_PROXY
 
-def get_domestic_news() -> List[Dict[str, str]]:
+def get_domestic_news(opener=None) -> List[Dict[str, str]]:
     """Gather real-time domestic headline news (DIRECT, NO PROXY)."""
     items = []
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         url = config.NEWS_DOMESTIC_URLS[0] if config.NEWS_DOMESTIC_URLS else ""
         if not url:
@@ -117,13 +117,13 @@ def translate_and_summarize_world_news(en_title: str, en_desc: str) -> tuple[str
     # Safe fallback: preserve the source instead of fabricating a summary.
     return f"国际新闻：{en_title[:80]}", en_desc[:240] or "原文摘要为空，暂无法生成中文精读。"
 
-def get_world_news() -> List[Dict[str, str]]:
+def get_world_news(opener=None) -> List[Dict[str, str]]:
     """Gather international breaking news (VIA OVERSEAS PROXY 7897) with Chinese summaries."""
     items = []
     proxy_handler = urllib.request.ProxyHandler(
         {'http': LOCAL_PROXY, 'https': LOCAL_PROXY} if LOCAL_PROXY else {}
     )
-    opener = urllib.request.build_opener(proxy_handler)
+    opener = opener or urllib.request.build_opener(proxy_handler)
     
     for source_url in config.NEWS_WORLD_URLS:
         if len(items) >= 3:

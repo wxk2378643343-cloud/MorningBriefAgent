@@ -69,6 +69,9 @@ FITNESS_PLAN_PATH = os.getenv("FITNESS_PLAN_PATH", "")
 FITNESS_LOG_PATH = os.getenv("FITNESS_LOG_PATH", "")
 FITNESS_ARCHIVE_DIR = os.getenv("FITNESS_ARCHIVE_DIR", "")
 CHAT_ARCHIVE_DIR = os.getenv("CHAT_ARCHIVE_DIR", "")
+IDEMPOTENCY_STORE_PATH = os.getenv(
+    "IDEMPOTENCY_STORE_PATH", str(PROJECT_ROOT / "data" / "idempotency.json")
+)
 
 # Feishu OpenAPI configuration. Credentials must never have source-code defaults.
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")

@@ -167,11 +167,10 @@ class FeishuCalendarManager:
                 same_time = (ev_start == start_ts_int and ev_end == end_ts_int)
                 # 2. 时间窗口重叠
                 time_overlap = max(0, min(end_ts_int, ev_end) - max(start_ts_int, ev_start)) > 1800 # 重叠超30分钟
-                # 3. 主题关键词相似
-                keywords = ["晨读", "健身", "跑步", "晚学", "攻坚", "工作"]
-                matched_kw = any(kw in summary and kw in ev_summary for kw in keywords)
-
-                if same_time or (time_overlap and matched_kw) or summary == ev_summary:
+                # Identity is structural: exact time or exact summary. Avoid
+                # domain-specific keyword heuristics that can merge unrelated
+                # user events.
+                if same_time or summary == ev_summary:
                     print(f"[日程先检护栏] 检测到已存在同类日程 '{ev_summary}' ({ev.get('event_id')})，直接复用，拒绝重复新增！")
                     return True, ev.get("event_id")
 

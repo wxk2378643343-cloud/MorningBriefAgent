@@ -113,6 +113,14 @@ WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 
 `NEWS_DOMESTIC_URLS` 和 `NEWS_WORLD_URLS` 是可替换的新闻源列表，使用分号分隔；新闻抓取器不再把具体 RSS/API 地址写死在源码中。
 
+外部写入使用稳定幂等键。默认状态文件为 `data/idempotency.json`（已被 Git 忽略），也可以显式设置：
+
+```dotenv
+IDEMPOTENCY_STORE_PATH=D:\path\to\runtime\data\idempotency.json
+```
+
+任务按“日期 + 标题”复用，日历按“日期 + 时间槽 + 摘要”复用；同步计划不会删除目标日期中用户手动创建的其他日程。
+
 待办输出路径也必须显式配置：
 
 ```dotenv

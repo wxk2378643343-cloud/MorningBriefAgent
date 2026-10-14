@@ -38,6 +38,9 @@ import config
 import agent_context
 import agent_provider
 import feishu_calendar
+import idempotency
+from feishu_gateway import feishu_gateway
+from feishu_task_gateway import task_gateway
 from feishu_client import feishu_client
 
 SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
@@ -482,23 +485,13 @@ def generate_and_publish_morning_todo() -> bool:
 def delete_feishu_task(task_id: str) -> bool:
     """Delete a Feishu task by ID."""
     try:
-        token_resp = requests.post(
-            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-            json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
-            timeout=10
-        )
-        token = token_resp.json().get("tenant_access_token")
-        if not token:
-            return False
-        headers = {"Authorization": f"Bearer {token}"}
-        url = f"https://open.feishu.cn/open-apis/task/v1/tasks/{task_id}"
-        res = requests.delete(url, headers=headers, timeout=10)
-        return res.json().get("code") == 0
+        return task_gateway.delete(task_id)
     except Exception as e:
         print(f"⚠️ 删除飞书任务异常: {e}")
         return False
 
-def create_feishu_task(summary: str, description: str = "", due_timestamp: Optional[int] = None, check_duplicate: bool = True) -> Optional[dict]:
+def create_feishu_task(summary: str, description: str = "", due_timestamp: Optional[int] = None,
+                       check_duplicate: bool = True, idempotency_key: str = "") -> Optional[dict]:
     """
     Create a task item in Feishu Task v2 system with Idempotent Deduplication.
     Returns task data dict or None on failure.
@@ -507,45 +500,33 @@ def create_feishu_task(summary: str, description: str = "", due_timestamp: Optio
     if not summary:
         return None
 
-    # Idempotency Guard: prevent duplicate creation if active task with same summary exists
+    if idempotency_key:
+        saved = idempotency.store.get(idempotency_key)
+        if saved and saved.get("provider_id"):
+            return {"id": saved["provider_id"], "task_id": saved["provider_id"],
+                    "summary": summary, "reused": True}
+
+    # Compatibility guard for tasks created before the local idempotency store.
     if check_duplicate:
         try:
             existing = list_feishu_tasks(page_size=50)
             for et in existing:
                 if et.get("complete_time") == "0" and et.get("summary", "").strip() == summary:
-                    return {"task_id": et.get("id"), "summary": summary, "reused": True}
+                    provider_id = et.get("id")
+                    if idempotency_key and provider_id:
+                        idempotency.store.put(idempotency_key, {"provider_id": provider_id})
+                    return {"task_id": provider_id, "id": provider_id,
+                            "summary": summary, "reused": True}
         except Exception as de:
             pass
 
     try:
-        token_resp = requests.post(
-            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-            json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
-            timeout=10
-        )
-        token = token_resp.json().get("tenant_access_token")
-        if not token:
-            return None
-
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
-        task_payload = {
-            "summary": summary,
-            "description": description or "由 AGY 智能体自动创建并同步",
-            "members": [
-                {"id": config.FEISHU_USER_OPEN_ID, "type": "user", "role": "assignee"}
-            ]
-        }
-        if due_timestamp:
-            task_payload["due"] = {"timestamp": str(due_timestamp)}
-
-        url = "https://open.feishu.cn/open-apis/task/v2/tasks?user_id_type=open_id"
-        res = requests.post(url, headers=headers, json=task_payload, timeout=10)
-        res_json = res.json()
-        if res_json.get("code") == 0:
-            task_data = res_json.get("data", {}).get("task", {})
+        task_data = task_gateway.create(summary, description, due_timestamp)
+        if task_data:
+            provider_id = task_data.get("id") or task_data.get("task_id")
+            if idempotency_key and provider_id:
+                idempotency.store.put(idempotency_key, {"provider_id": provider_id})
             return task_data
-        else:
-            print(f"⚠️ 创建飞书任务失败: {res_json.get('msg')}")
     except Exception as e:
         print(f"⚠️ 创建飞书任务网络异常: {e}")
     return None
@@ -555,51 +536,21 @@ def complete_feishu_task(task_id: str) -> bool:
     Mark a Feishu official task as completed using Task v1 complete API.
     """
     try:
-        token_resp = requests.post(
-            "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-            json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
-            timeout=10
-        )
-        token = token_resp.json().get("tenant_access_token")
-        if not token:
-            return False
-
-        headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json; charset=utf-8"}
-        url = f"https://open.feishu.cn/open-apis/task/v1/tasks/{task_id}/complete"
-        res = requests.post(url, headers=headers, timeout=10)
-        res_json = res.json()
-        if res_json.get("code") == 0:
+        if task_gateway.complete(task_id):
             print(f"✅ 成功将飞书任务标记为完成: {task_id}")
             return True
-        else:
-            print(f"⚠️ 标记飞书任务完成失败 ({task_id}): {res_json.get('msg')}")
-            return False
+        print(f"⚠️ 标记飞书任务完成失败 ({task_id})")
+        return False
     except Exception as e:
         print(f"⚠️ 标记飞书任务完成网络异常: {e}")
         return False
 
 def list_feishu_tasks(page_size: int = 50) -> List[Dict[str, Any]]:
     """Fetch recent Feishu tasks with auto-retry."""
-    for attempt in range(3):
-        try:
-            token_resp = requests.post(
-                "https://open.feishu.cn/open-apis/auth/v3/tenant_access_token/internal",
-                json={"app_id": config.FEISHU_APP_ID, "app_secret": config.FEISHU_APP_SECRET},
-                timeout=10
-            )
-            token = token_resp.json().get("tenant_access_token")
-            if not token:
-                continue
-
-            headers = {"Authorization": f"Bearer {token}"}
-            url = f"https://open.feishu.cn/open-apis/task/v1/tasks?user_id_type=open_id&page_size={page_size}"
-            res = requests.get(url, headers=headers, timeout=10)
-            res_json = res.json()
-            if res_json.get("code") == 0:
-                return res_json.get("data", {}).get("items", [])
-        except Exception as e:
-            if attempt == 2:
-                print(f"⚠️ 获取飞书任务列表网络异常: {e}")
+    try:
+        return task_gateway.list(page_size)
+    except Exception as e:
+        print(f"⚠️ 获取飞书任务列表网络异常: {e}")
     return []
 
 def complete_task_by_keyword(keyword: str) -> Optional[str]:
@@ -673,7 +624,10 @@ def append_custom_todo(item_text: str) -> str:
 
         feishu_task = create_feishu_task(
             summary=item_text,
-            description="由飞书消息实时动态追加（已同步写入本地计划文件）"
+            description="由飞书消息实时动态追加（已同步写入本地计划文件）",
+            idempotency_key=idempotency.make_key(
+                "feishu-task", datetime.date.today().isoformat(), item_text
+            ),
         )
         task_url_info = ""
         if feishu_task and feishu_task.get("url"):
@@ -705,7 +659,10 @@ def append_custom_todo(item_text: str) -> str:
 
 # --- 9. Helper: Push Card to Feishu (爪爪openclaw 官方双向通道) ---
 def push_feishu_card(card: dict, fallback_title: str) -> bool:
-    return feishu_client.send_card(card)
+    return feishu_gateway.send_card_once(
+        card,
+        idempotency.make_key("feishu-card", fallback_title, datetime.date.today().isoformat()),
+    )
 
 # --- 10. Unified Intent Router for Feishu Bot ---
 def handle_todo_intent(user_text: str) -> Optional[str]:
@@ -821,13 +778,8 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
     if not slots:
         return 0
 
-    # 1. Clean existing events on target date to avoid duplicates
-    try:
-        feishu_calendar.calendar_mgr.clean_day_events(target_date)
-    except Exception as e:
-        print(f"清理旧日程异常: {e}")
-
-    # 2. Immediately write slots to Feishu Calendar
+    # Stable event identity plus provider-side duplicate detection. Never
+    # delete unrelated user-created events on the target day.
     written_count = 0
     for s in slots:
         try:
@@ -835,6 +787,14 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
             e_hour, e_min = map(int, s["end"].split(":"))
             s_dt = datetime.datetime.combine(target_date, datetime.time(s_hour, s_min))
             e_dt = datetime.datetime.combine(target_date, datetime.time(e_hour, e_min))
+            key = idempotency.make_key(
+                "feishu-calendar", target_date_str, s.get("name", ""),
+                s.get("start", ""), s.get("end", ""), s.get("summary", "")
+            )
+            saved = idempotency.store.get(key)
+            if saved and saved.get("provider_id"):
+                written_count += 1
+                continue
             ok, ev_id = feishu_calendar.calendar_mgr.create_silent_event(
                 summary=s["summary"],
                 start_dt=s_dt,
@@ -843,6 +803,8 @@ def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
                 reminder_minutes=15
             )
             if ok:
+                if ev_id:
+                    idempotency.store.put(key, {"provider_id": ev_id})
                 written_count += 1
         except Exception as se:
             print(f"写入日历槽位异常 ({s.get('name')}): {se}")
@@ -864,7 +826,10 @@ def sync_plan_to_feishu_tasks(plan_data: Dict[str, Any]) -> int:
         try:
             task = create_feishu_task(
                 summary=t_title,
-                description=f"{target_date_str} 核心作战待办（已同步 Obsidian 知识库）"
+                description=f"{target_date_str} 核心作战待办（已同步 Obsidian 知识库）",
+                idempotency_key=idempotency.make_key(
+                    "feishu-task", target_date_str, t_title
+                ),
             )
             if task:
                 created_count += 1
