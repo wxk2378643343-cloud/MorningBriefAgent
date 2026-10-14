@@ -31,34 +31,26 @@ if CORE_DIR not in sys.path:
     sys.path.insert(0, CORE_DIR)
 
 import config
+import agent_context
+import agy_bridge
 import feishu_calendar
 from feishu_client import feishu_client
 
 FITNESS_PLAN_PATH = config.FITNESS_PLAN_PATH
 FITNESS_LOG_PATH = config.FITNESS_LOG_PATH
 
-WEEKDAY_PLAN_MAP = {
-    0: ("Day 1 (周一)", "胸部饱满 + 肱三头肌 + 腹直肌上部"),
-    1: ("Day 2 (周二)", "背阔肌拉宽 (倒三角) + 肱二头肌 + 绳索面拉 (圆肩克星)"),
-    2: ("Day 3 (周三)", "脑力充能与深度恢复日"),
-    3: ("Day 4 (周四)", "3D球形肩 (防斜方代偿) + 腹肌下段深层紧腹"),
-    4: ("Day 5 (周五)", "悍马倒蹬护膝 + 史密斯RDL改善膝超伸"),
-    5: ("Day 6 (周六)", "活力周末有氧 (羽毛球 60~90m / 自由泳 40m)"),
-    6: ("Day 7 (周日)", "完全休息日 (8小时睡眠 + 肌肉超量代偿)")
-}
-
 def parse_fitness_log_and_nutrition() -> Dict[str, Any]:
-    """Parse real-time nutrition and latest training stats from 每日任务追踪与执行流水账.md."""
+    """Parse configured activity logs without inventing nutrition defaults."""
     data = {
-        "streak_days": 14,
-        "last_load": "5.33吨 (5330 kg)",
-        "last_calorie_burn": "295 kcal",
-        "last_duration": "1h 26m",
-        "current_calories": "1525 kcal",
-        "calorie_target": "1900 kcal",
-        "current_protein": "116.7g",
-        "protein_target": "135g",
-        "protein_remaining": "18.3g",
+        "streak_days": 0,
+        "last_load": "未记录",
+        "last_calorie_burn": "未记录",
+        "last_duration": "未记录",
+        "current_calories": "未记录",
+        "calorie_target": "未配置",
+        "current_protein": "未记录",
+        "protein_target": "未配置",
+        "protein_remaining": "未计算",
         "meals_recorded": []
     }
     if not os.path.exists(FITNESS_LOG_PATH):
@@ -102,63 +94,45 @@ def parse_fitness_log_and_nutrition() -> Dict[str, Any]:
     return data
 
 def parse_today_workout() -> Dict[str, Any]:
-    """Parse today's specific workout routine from Obsidian plan."""
+    """Ask the local Agent to interpret today's configured activity plan."""
     now = datetime.datetime.now()
-    weekday_idx = now.weekday()
-    day_tag, muscle_group = WEEKDAY_PLAN_MAP[weekday_idx]
-    
     workout_data = {
         "today_str": now.strftime("%Y年%m月%d日"),
-        "weekday_str": day_tag,
-        "muscle_group": muscle_group,
+        "weekday_str": now.strftime("%A"),
+        "muscle_group": "未配置",
         "exercises": [],
-        "tips": "悍马机独立人体工学轨迹挤压胸背，史密斯机固定安全轨道，零大杠铃失衡风险，安全渐进超负荷！",
-        "is_rest_day": weekday_idx in (2, 6)
+        "tips": "请根据本地活动计划与 Agent 分析结果执行。",
+        "is_rest_day": False
     }
-    
-    if not os.path.exists(FITNESS_PLAN_PATH):
+
+    if not FITNESS_PLAN_PATH or not os.path.exists(FITNESS_PLAN_PATH):
         return workout_data
-        
     try:
         with open(FITNESS_PLAN_PATH, "r", encoding="utf-8", errors="ignore") as f:
             content = f.read()
-
-        # Find section for today: e.g. Day 1, Day 2, Day 3...
-        day_num = weekday_idx + 1
-        target_pattern = rf"### 📌 Day {day_num}\b.*?\n(.*?)(?=\n### 📌|\n---|\Z)"
-        match = re.search(target_pattern, content, re.DOTALL)
-        if match:
-            section_text = match.group(1).strip()
-            # Extract exercise lines
-            ex_lines = re.findall(r"(?:🛡️|🔥|\d+\.)\s*([^\n]+)", section_text)
-            for el in ex_lines:
-                clean_el = el.strip().replace("**", "")
-                if clean_el:
-                    workout_data["exercises"].append(clean_el)
+        prompt = agent_context.build_prompt(
+            task=(
+                "阅读活动计划，找出指定日期的安排并严格返回 JSON："
+                "{\"weekday_str\":\"...\",\"muscle_group\":\"...\","
+                "\"exercises\":[\"...\"],\"tips\":\"...\",\"is_rest_day\":false}。"
+                "只使用计划中明确出现的内容；找不到时返回空 exercises、"
+                "muscle_group 为“未配置”，不要发明训练项目、动作、目标或营养建议。"
+            ),
+            query=f"请分析 {now.strftime('%Y-%m-%d')} 的活动安排。",
+            context=content[:24000],
+        )
+        result = agy_bridge.ask_native_agy("activity-plan", prompt)
+        fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", result or "", re.DOTALL)
+        parsed = json.loads(fenced.group(1) if fenced else result)
+        if isinstance(parsed, dict):
+            for key in ("weekday_str", "muscle_group", "tips"):
+                if isinstance(parsed.get(key), str) and parsed[key].strip():
+                    workout_data[key] = parsed[key].strip()
+            if isinstance(parsed.get("exercises"), list):
+                workout_data["exercises"] = [str(x) for x in parsed["exercises"][:20]]
+            workout_data["is_rest_day"] = bool(parsed.get("is_rest_day", False))
     except Exception as e:
-        print(f"⚠️ 解析课表异常: {e}")
-
-    # Fallback default exercises if empty
-    if not workout_data["exercises"]:
-        if weekday_idx == 0:
-            workout_data["exercises"] = [
-                "热身 (5m)：弹力带肩袖外旋 2组×15次 + 俯卧撑 2组×10次",
-                "悍马坐姿平推/下斜推胸机：4组 × 8~10次 (单边发力，慢放2秒顶峰收缩)",
-                "史密斯上斜推胸 (锁骨上胸)：4组 × 10~12次 (长凳30°，下落至锁骨下2cm)",
-                "器械蝴蝶机夹胸：3组 × 12~15次 (挤压胸肌中缝)",
-                "绳索下压 (肱三头肌)：3组 × 12~15次 (手肘锁死身体两侧)",
-                "腹直肌雕刻 (自重/器械卷腹)：4组 × 15~20次 (下背贴地卷起)"
-            ]
-        elif weekday_idx == 1:
-            workout_data["exercises"] = [
-                "热身 (5m)：高位下拉轻重量找背部发力 + 泡沫轴滚背",
-                "悍马独立高位下拉机：4组 × 8~12次 (肘向下内夹紧，背阔肌深收缩)",
-                "悍马坐姿对握划船机：4组 × 10~12次 (胸贴支撑垫，拉向小腹改善圆肩)",
-                "单臂哑铃划船：3组 × 10~12次/侧 (拉长大臂下侧背阔肌)",
-                "绳索面拉 (Face Pull - 圆肩头前伸必修)：4组 × 15次 (大臂外旋拉回肱骨头)",
-                "哑铃交替弯举 (肱二头肌)：3组 × 10~12次 (双手稳固发力)"
-            ]
-            
+        print(f"⚠️ Agent 活动计划分析异常: {e}")
     return workout_data
 
 def build_feishu_fitness_card(workout_data: Dict[str, Any]) -> Dict[str, Any]:
