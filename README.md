@@ -1,10 +1,41 @@
-# MorningBriefAgent
+<div align="center">
+  <img src="assets/readme-banner.png" alt="MorningBriefAgent architecture banner" width="100%">
+</div>
+
+<div align="center">
+  <h1>MorningBriefAgent</h1>
+  <p><strong>本地知识库 × Agent 推理 × 飞书行动闭环</strong></p>
+  <p>把分散的本地信息，整理成可解释、可确认、可恢复的行动流程。</p>
+</div>
+
+<div align="center">
+  <a href="https://github.com/wxk2378643343-cloud/MorningBriefAgent/blob/main/LICENSE"><img src="https://img.shields.io/github/license/wxk2378643343-cloud/MorningBriefAgent?style=flat-square" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/Windows-10%2F11-0078D4?style=flat-square&logo=windows&logoColor=white" alt="Windows 10/11">
+</div>
+
+<br>
 
 一个 Windows 优先的本地知识库与行动闭环 Agent：把飞书、Obsidian、本地消息、新闻和可选领域数据串成可定时执行的工作流。
 
 项目目前适合个人自托管、二次开发和自动化方案参考；它不是开箱即用的 SaaS，也尚未达到面向多租户的生产级服务标准。源码不包含任何特定用户的目标、作息、学校、职业或生活规划。
 
 > 本项目与飞书、Obsidian、微信或 Google Antigravity 均无官方隶属关系。涉及本地聊天数据库的功能只应处理你有权访问的数据，并遵守所在地法律、平台条款和他人隐私。
+
+## 目录
+
+- [项目背景与定位](#项目背景与定位)
+- [技术栈](#技术栈)
+- [总体架构](#总体架构)
+- [架构思路与采用的方案](#架构思路与采用的方案)
+- [功能概览](#功能概览)
+- [快速开始](#快速开始)
+- [配置](#配置)
+- [目录结构](#目录结构)
+- [安全与隐私](#安全与隐私)
+- [已知限制](#已知限制)
+- [贡献方向](#适合贡献的方向)
+- [License](#license)
 
 ## 为什么做这个项目
 
