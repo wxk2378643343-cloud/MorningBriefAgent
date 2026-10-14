@@ -43,6 +43,7 @@ from core.runtime import config
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.idempotency import make_key
 from .chat_analysis import analyze_and_reflect
+from . import chat_reader
 
 WECHAT_TOOLS_DIR = config.WECHAT_TOOLS_DIR
 DECRYPT_SCRIPT = os.path.join(WECHAT_TOOLS_DIR, "decrypt_db.py")
@@ -601,6 +602,52 @@ def main():
         print("🎉 任务执行成功，飞书卡片已推送，Obsidian 知识库已归档！")
     else:
         print("⚠️ 任务执行完成，但飞书推送异常，请检查网络或配置。")
+
+
+# Compatibility wrappers: data access is implemented by chat_reader.
+def sync_wechat_database() -> bool:
+    return chat_reader.sync_wechat_database(WECHAT_TOOLS_DIR, DECRYPT_SCRIPT)
+
+
+def get_contact_maps() -> Tuple[Dict[str, str], Dict[str, str]]:
+    return chat_reader.get_contact_maps(
+        WECHAT_CONTACT_DB,
+        tuple(EXCLUDED_USERNAMES),
+        tuple(EXCLUDED_NAME_KEYWORDS),
+    )
+
+
+def decode_message_content(content: Any, local_type: int) -> Tuple[str, str]:
+    return chat_reader.decode_message_content(content, local_type)
+
+
+def clean_text_content(content: Any) -> str:
+    return chat_reader.clean_text_content(content)
+
+
+def scan_private_chats(
+    friends_map: Dict[str, str],
+    start_ts: int,
+    end_ts: int,
+) -> List[Dict[str, Any]]:
+    return chat_reader.scan_private_chats(
+        WECHAT_MSG_DB, friends_map, start_ts, end_ts
+    )
+
+
+def scan_target_group_chats(
+    chatrooms_map: Dict[str, str],
+    start_ts: int,
+    end_ts: int,
+) -> Tuple[List[Dict[str, Any]], int]:
+    return chat_reader.scan_target_group_chats(
+        WECHAT_MSG_DB,
+        chatrooms_map,
+        start_ts,
+        end_ts,
+        tuple(SPECIFIED_GROUP_KEYWORDS),
+    )
+
 
 if __name__ == "__main__":
     main()
