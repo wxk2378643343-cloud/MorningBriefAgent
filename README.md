@@ -227,19 +227,19 @@ LOCAL_PROXY=http://127.0.0.1:7890
 python main.py bot
 ```
 
-后台启动：
+后台运行建议直接使用虚拟环境中的 Python：
 
 ```powershell
-wscript.exe .\run_bot_silent.vbs
+Start-Process -WindowStyle Hidden `
+  -FilePath ".\.venv\Scripts\pythonw.exe" `
+  -ArgumentList "-m server.feishu_bot_server"
 ```
 
-VBS 脚本会从自身位置推导项目目录，并调用 `PATH` 中的 `pythonw.exe` 启动服务。若使用虚拟环境，Windows 计划任务中更稳妥的方式是直接把“程序”设为虚拟环境的 `python.exe`，参数设为项目绝对路径下的 `main.py bot`，并把“起始于”设为仓库根目录。
-
-根目录的 `启动飞书机器人.bat` 与 `停止飞书机器人.bat` 会管理匹配的后台进程。停止脚本会强制结束进程，运行前请确认没有其他同名服务。
+仓库不分发 `.vbs` 和 `.bat` 启动脚本；如需 Windows 计划任务，请在本机任务计划程序中直接配置 Python 程序、项目根目录和环境变量。
 
 ## Windows 计划任务
 
-`scripts/` 中提供了各服务的批处理入口。创建任务时建议：
+创建 Windows 计划任务时建议：
 
 1. 使用当前仓库的绝对路径作为“起始于”目录；
 2. 使用虚拟环境中的 Python；

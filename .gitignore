@@ -71,6 +71,7 @@ venv.bak/
 
 # --- 7. Local Windows Launch Scripts ---
 *.bat
+*.vbs
 
 # --- 8. IDEs & Editors ---
 .vscode/
