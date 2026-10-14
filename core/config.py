@@ -57,7 +57,8 @@ WECHAT_EXCLUDED_NAME_KEYWORDS = _csv("WECHAT_EXCLUDED_NAME_KEYWORDS")
 EMAIL_INBOX_DIRS = _csv("EMAIL_INBOX_DIRS")
 TECH_NEWS_DIR = os.getenv("TECH_NEWS_DIR", "")
 STUDY_TRACKER_PATH = os.getenv("STUDY_TRACKER_PATH", "")
-TODAY_TODO_PATH = os.path.join(VAULT_ROOT, "03 - 待办事项", "今日待办.md")
+TODAY_TODO_PATH = os.getenv("TODAY_TODO_PATH", "")
+TODO_ARCHIVE_DIR = os.getenv("TODO_ARCHIVE_DIR", "")
 
 # Feishu OpenAPI configuration. Credentials must never have source-code defaults.
 FEISHU_APP_ID = os.getenv("FEISHU_APP_ID", "")

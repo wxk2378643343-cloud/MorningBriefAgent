@@ -3,8 +3,8 @@
 """
 Daily Todo & Schedule Service (Unified Planning & Evening Review Agent)
 1. Evening review: Scans configured chat logs, prepares Agent-generated Todos + Calendar Schedule Slots, sends a unified review card to Feishu.
-2. Evening Interaction: User can adjust schedule times ("健身改到六点") or add todos ("加上xxx") or confirm ("确认/没问题").
-3. Morning 06:00: Archives yesterday's plan, writes today's Obsidian 今日待办.md, creates Feishu official tasks (Task v2),
+2. Evening Interaction: User can adjust configured schedule slots, add todos, or confirm the plan.
+3. Morning routine: Archives yesterday's plan when an output path is configured, creates Feishu official tasks (Task v2),
    and writes schedule events directly to Feishu Calendar (with 15-min advance alarms).
 4. 24/7 Realtime: Supports adding custom todos anytime via Feishu message ("加待办: xxx").
 """
@@ -51,7 +51,7 @@ STAGED_PLAN_FILE = os.path.join(DATA_DIR, "staged_plan.json")
 if not os.path.exists(STAGED_PLAN_FILE) and os.path.exists(os.path.join(PROJECT_ROOT, "staged_plan.json")):
     STAGED_PLAN_FILE = os.path.join(PROJECT_ROOT, "staged_plan.json")
 
-ARCHIVE_DIR = os.path.join(config.VAULT_ROOT, "03 - 待办事项", "历史归档")
+ARCHIVE_DIR = config.TODO_ARCHIVE_DIR
 
 WECHAT_TOOLS_DIR = config.WECHAT_TOOLS_DIR
 DECRYPT_SCRIPT = os.path.join(WECHAT_TOOLS_DIR, "decrypt_db.py")
@@ -207,7 +207,7 @@ def extract_candidates_from_chat() -> List[str]:
             print(f"Feishu log scan warning: {fe}")
 
     # 4. Extract unfinished todos from 今日待办.md to rollover
-    if os.path.exists(config.TODAY_TODO_PATH):
+    if config.TODAY_TODO_PATH and os.path.exists(config.TODAY_TODO_PATH):
         try:
             with open(config.TODAY_TODO_PATH, "r", encoding="utf-8") as f:
                 for line in f:
@@ -312,16 +312,16 @@ def get_weekly_archive_dir(archive_base: str, date_str: str) -> str:
     return target_dir
 
 
-# --- 6. Generate and Publish Morning Todo (06:00) ---
+# --- 6. Generate and Publish Morning Todo ---
 def generate_and_publish_morning_todo() -> bool:
-    """Generate today's Obsidian 今日待办.md, create Feishu Tasks and Feishu Calendar events at 06:00."""
+    """Generate today's configured plan output and sync tasks/calendar."""
     now = datetime.datetime.now()
     today_date = now.date()
     today_str = today_date.strftime("%Y-%m-%d")
     weekday_str = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][today_date.weekday()]
 
-    # 1. Archive yesterday's 今日待办.md into weekly folder
-    if os.path.exists(config.TODAY_TODO_PATH):
+    # 1. Archive yesterday's plan into the configured archive folder
+    if config.TODAY_TODO_PATH and os.path.exists(config.TODAY_TODO_PATH):
 
         try:
             with open(config.TODAY_TODO_PATH, "r", encoding="utf-8") as f:
@@ -334,11 +334,14 @@ def generate_and_publish_morning_todo() -> bool:
             if not old_date:
                 old_date = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
 
-            weekly_dir = get_weekly_archive_dir(ARCHIVE_DIR, old_date)
-            archive_file = os.path.join(weekly_dir, f"{old_date} 今日待办.md")
-            with open(archive_file, "w", encoding="utf-8") as f:
-                f.write(old_content)
-            print(f"✅ 昨日待办已按自然周自动归档至: {archive_file}")
+            weekly_dir = get_weekly_archive_dir(ARCHIVE_DIR, old_date) if ARCHIVE_DIR else ""
+            if not weekly_dir:
+                print("ℹ️ 未配置 TODO_ARCHIVE_DIR，跳过旧计划归档。")
+            else:
+                archive_file = os.path.join(weekly_dir, f"{old_date} plan.md")
+                with open(archive_file, "w", encoding="utf-8") as f:
+                    f.write(old_content)
+                print(f"✅ 昨日计划已按自然周归档至: {archive_file}")
 
             # 统计昨日待办打卡完成率并自动写入周报执行矩阵
             try:
@@ -401,9 +404,13 @@ def generate_and_publish_morning_todo() -> bool:
 
     md_lines.append("")
 
-    with open(config.TODAY_TODO_PATH, "w", encoding="utf-8") as f:
-        f.write("\n".join(md_lines))
-    print(f"✅ 今日待办已生成并落盘至: {config.TODAY_TODO_PATH}")
+    if config.TODAY_TODO_PATH:
+        os.makedirs(os.path.dirname(config.TODAY_TODO_PATH), exist_ok=True)
+        with open(config.TODAY_TODO_PATH, "w", encoding="utf-8") as f:
+            f.write("\n".join(md_lines))
+        print(f"✅ 计划已生成并落盘至: {config.TODAY_TODO_PATH}")
+    else:
+        print("ℹ️ 未配置 TODAY_TODO_PATH，跳过本地 Markdown 写入。")
 
     # 3.1 周期复盘全量级联伴生 (日记 / 周报 / 月度回顾)
     try:
@@ -459,7 +466,7 @@ def generate_and_publish_morning_todo() -> bool:
     card_elements.append({
         "tag": "note",
         "elements": [
-            {"tag": "plain_text", "content": "📁 已同步写入 Obsidian: 03 - 待办事项/今日待办.md | 随时在飞书发“加待办: xxx”追加"}
+            {"tag": "plain_text", "content": "📁 已同步写入已配置的本地计划文件 | 随时在飞书发“加待办: xxx”追加"}
         ]
     })
 
@@ -601,7 +608,7 @@ def list_feishu_tasks(page_size: int = 50) -> List[Dict[str, Any]]:
 def complete_task_by_keyword(keyword: str) -> Optional[str]:
     """
     Search Feishu tasks by keyword and complete them.
-    Also sync checkmark to Obsidian 今日待办.md.
+    Also sync the checkmark to the configured local plan file.
     """
     kw = keyword.strip()
     if not kw:
@@ -617,8 +624,8 @@ def complete_task_by_keyword(keyword: str) -> Optional[str]:
             if complete_feishu_task(t_id):
                 completed_names.append(summary)
 
-    # Sync to Obsidian 今日待办.md
-    if os.path.exists(config.TODAY_TODO_PATH):
+    # Sync to the configured local plan file
+    if config.TODAY_TODO_PATH and os.path.exists(config.TODAY_TODO_PATH):
         try:
             with open(config.TODAY_TODO_PATH, "r", encoding="utf-8") as f:
                 c = f.read()
@@ -628,7 +635,7 @@ def complete_task_by_keyword(keyword: str) -> Optional[str]:
             with open(config.TODAY_TODO_PATH, "w", encoding="utf-8") as f:
                 f.write(c)
         except Exception as e:
-            print(f"同步勾选 Obsidian 今日待办异常: {e}")
+            print(f"同步本地计划勾选异常: {e}")
 
     # Sync checkmarks to 04 - 周期复盘/日记 (Daily)
     try:
@@ -642,11 +649,13 @@ def complete_task_by_keyword(keyword: str) -> Optional[str]:
 
 # --- 8. Append Custom Todo Realtime ---
 def append_custom_todo(item_text: str) -> str:
-    """Append a custom todo item to 今日待办.md immediately."""
+    """Append a custom todo item to the configured local plan immediately."""
     item_text = item_text.strip()
     if not item_text:
         return "⚠️ 待办事项内容不能为空。"
 
+    if not config.TODAY_TODO_PATH:
+        return "⚠️ 未配置 TODAY_TODO_PATH，无法追加到本地计划文件。"
     if not os.path.exists(config.TODAY_TODO_PATH):
         generate_and_publish_morning_todo()
 
@@ -667,7 +676,7 @@ def append_custom_todo(item_text: str) -> str:
 
         feishu_task = create_feishu_task(
             summary=item_text,
-            description="由飞书消息实时动态追加（已同步写入 Obsidian 今日待办.md）"
+            description="由飞书消息实时动态追加（已同步写入本地计划文件）"
         )
         task_url_info = ""
         if feishu_task and feishu_task.get("url"):
@@ -693,7 +702,7 @@ def append_custom_todo(item_text: str) -> str:
         except Exception as je:
             print(f"⚠️ 动态追加待办同步日记异常: {je}")
 
-        return f"✅ 已成功将待办同步至「Obsidian 今日待办/日记」与「飞书官方任务」：\n- [ ] **{item_text}**{task_url_info}"
+        return f"✅ 已成功将待办同步至本地计划文件与飞书任务：\n- [ ] **{item_text}**{task_url_info}"
     except Exception as e:
         return f"❌ 追加待办失败: {str(e)}"
 
@@ -775,7 +784,7 @@ def handle_todo_intent(user_text: str) -> Optional[str]:
                     todos.append(item)
                     plan["todos"] = todos
                     save_staged_plan(plan)
-                return f"✅ 收到！已为您追加确认明日待办：\n• **{item}**\n\n明早 06:00 将准时汇总落盘并同步至飞书任务！"
+                return f"✅ 收到！已为您追加确认明日待办：\n• **{item}**\n\n后续运行计划时将同步至飞书任务！"
 
     # 4. Direct Task Completion: 打卡: xxx / 完成: xxx / xxx已完成 / xxx已做 / 完成了xxx
     for prefix in ["完成待办:", "完成待办：", "完成任务:", "完成任务：", "打卡:", "打卡：", "已完成:", "已完成："]:
@@ -885,7 +894,7 @@ def sync_plan_to_feishu_tasks(plan_data: Dict[str, Any]) -> int:
                 f"✅ 收到！已严格执行【双节点×双载体双写铁律】：\n"
                 f"1. 📅 **飞书官方日历**：已当场立即写入全部 {cal_count} 项敏捷时间盒日程（含15分钟提前强提醒闹钟）！\n"
                 f"2. 📋 **飞书官方任务**：已当场立即批量创建全部 {task_count} 项核心待办（可直接打勾）！\n"
-                f"3. 📁 **知识库底册**：排期已正式锁定，明早 06:00 晨启时将执行二次对账生成 Obsidian 今日待办.md。"
+                f"3. 📁 **本地计划文件**：排期已正式锁定，下一次运行计划时将执行二次对账并写入配置路径。"
             )
 
     return None
@@ -894,7 +903,7 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Daily Todo & Schedule Service")
     parser.add_argument("--evening", action="store_true", help="Run evening review")
-    parser.add_argument("--morning", action="store_true", help="Run 06:00 Morning Generation")
+    parser.add_argument("--morning", action="store_true", help="Run morning plan generation")
     parser.add_argument("--add", type=str, help="Add custom todo item")
     parser.add_argument("--complete", type=str, help="Complete todo item by keyword")
     args = parser.parse_args()

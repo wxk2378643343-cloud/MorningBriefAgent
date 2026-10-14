@@ -107,6 +107,15 @@ WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 
 `EMAIL_INBOX_DIRS` 是邮件 Markdown 收件目录列表，`TECH_NEWS_DIR` 是可选的技术摘要目录，均使用分号分隔（邮件目录可配置多个）。解析器不会假设任何特定的 Vault 子目录名称；未配置时不会扫描对应数据。
 
+待办输出路径也必须显式配置：
+
+```dotenv
+TODAY_TODO_PATH=D:\path\to\knowledge-base\daily-plan.md
+TODO_ARCHIVE_DIR=D:\path\to\knowledge-base\plan-archive
+```
+
+未配置 `TODAY_TODO_PATH` 时，服务仍可生成 Agent 计划并同步飞书任务/日历，但不会擅自创建或猜测本地知识库目录。
+
 ### Agent 上下文与计划
 
 个人目标、偏好、约束和计划只应放在本地知识库，不要写入公开源码。可以显式配置若干 Markdown 文件，或配置一个目录让程序递归读取：
