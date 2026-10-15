@@ -75,6 +75,8 @@ function App() {
       .then(([nextStatus, nextDiscovery]) => {
         setStatus(nextStatus);
         setDiscovery(nextDiscovery);
+        const localProvider = nextDiscovery.providers?.find((provider) => provider.kind === "local_process" && provider.available);
+        if (localProvider) setSelectedProvider(localProvider.name);
         setMessage("本地服务已连接");
       })
       .catch(() => {
@@ -318,8 +320,7 @@ function WorkspaceStep({ onComplete }) {
       if (typeof selected === "string") setRoot(selected);
     } catch { /* Browser preview keeps the manual path field available. */ }
   };
-  const initializeDemo = async () => { setBusy(true); setError(""); try { const response = await fetch(apiUrl("/api/v1/workspace/initialize-demo"), { method: "POST" }); if (!response.ok) throw new Error(await response.text()); onComplete(); } catch { setBusy(false); setError("Demo 工作区初始化失败，请重启本地 API。"); } };
-  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>先初始化工作区，应用会创建本地数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button><button className="secondary" disabled={busy} onClick={initializeDemo}>初始化 Demo 工作区</button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
+  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>配置本地工作区</h4><p>选择你自己的本地目录。应用只会在该目录建立必要的本地目录和 SQLite，不上传任何内容。</p><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
 function ProviderStep({ providers, selected, onSelect, onComplete }) {
   const [apiKey, setApiKey] = useState("");
@@ -327,6 +328,8 @@ function ProviderStep({ providers, selected, onSelect, onComplete }) {
   const submit = async () => {
     setBusy(true);
     try {
+      const provider = providers.find((item) => item.name === selected);
+      if (selected === "deepseek" && !apiKey && !provider?.configured) throw new Error("api_key_required");
       if (selected === "deepseek" && apiKey) {
         const response = await fetch(apiUrl(`/api/v1/providers/${selected}/credentials`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: apiKey }) });
         if (!response.ok) throw new Error("provider");
@@ -334,7 +337,7 @@ function ProviderStep({ providers, selected, onSelect, onComplete }) {
       onComplete();
     } catch { setBusy(false); }
   };
-  return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择你的 AI Provider</h4><p>密钥只保存到本机系统凭据，不会写入 SQLite 或日志。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div>{selected === "deepseek" && <label className="secret-field">DeepSeek API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" /></label>}<button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存 Provider 选择"} <ChevronRight size={16} /></button></div></div>;
+  return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择 AI 运行方式</h4><p>优先检测本地 Agent 进程；也可以选择 API。密钥只保存到本机系统凭据。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到，可使用" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div>{selected === "deepseek" && <label className="secret-field">DeepSeek API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" /></label>}<button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "使用此 Provider"} <ChevronRight size={16} /></button></div></div>;
 }
 function ChannelStep({ channels, selected, onSelect, onComplete }) {
   const [values, setValues] = useState({ app_id: "", app_secret: "", user_open_id: "", chat_id: "" });
