@@ -32,6 +32,9 @@ class LocalFileApiTests(unittest.TestCase):
             root = Path(temp_dir) / "vault"
             root.mkdir()
             (root / "brief.md").write_text("# Brief", encoding="utf-8")
+            (root / "pixel.png").write_bytes(
+                bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489")
+            )
             sqlite_file = root / "sample.sqlite3"
             import sqlite3
             database_handle = sqlite3.connect(sqlite_file)
@@ -65,11 +68,15 @@ class LocalFileApiTests(unittest.TestCase):
                     f"{base}/api/v1/sqlite?source_id={source_id}"
                     f"&path=sample.sqlite3&table=notes"
                 )
+                binary = self._get(
+                    f"{base}/api/v1/file-binary?source_id={source_id}&path=pixel.png"
+                )
                 self.assertEqual(sources["sources"][0]["name"], "Vault")
                 self.assertEqual(files["files"][0]["relative_path"], "brief.md")
                 self.assertEqual(preview["file"]["content"], "# Brief")
                 self.assertEqual(database["database"]["tables"], ["notes"])
                 self.assertEqual(database["database"]["rows"][0]["body"], "hello")
+                self.assertEqual(binary["file"]["content_type"], "image/png")
             finally:
                 server.shutdown()
                 server.server_close()

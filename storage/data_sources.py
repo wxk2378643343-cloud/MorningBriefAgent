@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import base64
+import mimetypes
 import os
 import sqlite3
 from pathlib import Path
@@ -197,6 +199,43 @@ def read_file_preview(
         "file_name": target.name,
         "file_type": _file_type(target),
         "content": content,
+        "size_bytes": target.stat().st_size,
+    }
+
+
+def read_file_binary(
+    source_id: str,
+    relative_path: str,
+    *,
+    max_bytes: int = 5 * 1024 * 1024,
+    database_path: str | os.PathLike[str] | None = None,
+) -> dict[str, object]:
+    """Read a bounded binary file as base64 for local image/PDF preview."""
+    initialize(database_path)
+    with connect(database_path) as connection:
+        source = connection.execute(
+            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
+            (source_id,),
+        ).fetchone()
+    if source is None:
+        raise KeyError(f"Unknown data source: {source_id}")
+    root = Path(str(source["root_path"])).resolve()
+    target = (root / relative_path).resolve()
+    if root != target and root not in target.parents:
+        raise ValueError("Path escapes data source root")
+    if not target.is_file():
+        raise FileNotFoundError(relative_path)
+    if target.stat().st_size > max_bytes:
+        raise ValueError("file_too_large_for_preview")
+    content_type = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    if content_type not in {"application/pdf", "image/jpeg", "image/png", "image/gif"}:
+        raise ValueError("binary_preview_not_supported")
+    return {
+        "relative_path": target.relative_to(root).as_posix(),
+        "file_name": target.name,
+        "file_type": _file_type(target),
+        "content_type": content_type,
+        "content_base64": base64.b64encode(target.read_bytes()).decode("ascii"),
         "size_bytes": target.stat().st_size,
     }
 

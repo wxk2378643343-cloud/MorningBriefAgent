@@ -163,6 +163,7 @@ function FileWorkspace({ serviceState }) {
   const [files, setFiles] = useState(demoFiles);
   const [selected, setSelected] = useState(demoFiles[0][0]);
   const [preview, setPreview] = useState(null);
+  const [binaryPreview, setBinaryPreview] = useState(null);
   const [live, setLive] = useState(false);
 
   const loadFiles = async () => {
@@ -196,8 +197,17 @@ function FileWorkspace({ serviceState }) {
     const file = files.find(([name]) => name === selected);
     if (!file || !["markdown", "json", "log", "file"].includes(file[1])) {
       setPreview(null);
+      if (file && ["image", "pdf"].includes(file[1])) {
+        fetch(apiUrl(`/api/v1/file-binary?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(file[4] || file[2])}`))
+          .then((response) => response.json())
+          .then((payload) => setBinaryPreview(payload.file ?? null))
+          .catch(() => setBinaryPreview(null));
+      } else {
+        setBinaryPreview(null);
+      }
       return;
     }
+    setBinaryPreview(null);
     fetch(apiUrl(`/api/v1/files?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(file[4] || file[2])}`))
       .then((response) => response.json())
       .then((payload) => setPreview(payload.file?.content ?? null))
@@ -205,7 +215,8 @@ function FileWorkspace({ serviceState }) {
   }, [source, selected, files]);
 
   const selectedFile = files.find(([name]) => name === selected);
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Local data</span><h2>文件与数据</h2><p>查看本地文件、数据库、Agent 记录和附件，不复制原始数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button><button type="button" className="primary"><FolderOpen size={15} />添加目录</button></div></div><div className="file-layout"><aside className="file-tree"><strong>数据源</strong><button className="tree-selected"><FolderOpen size={15} />{source?.name ?? "全部数据"}</button><button><FolderOpen size={15} />知识库</button><button><Database size={15} />数据库</button><button><MessageSquare size={15} />Agent 对话</button><button><Workflow size={15} />运行日志</button><div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "本地索引已连接" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected || "未选择文件"}</h3><p>这里会显示受大小限制的只读预览。原始文件仍然保存在你配置的本地目录中。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong># 今日晨间简报</strong><br /><br /><span>本地预览已准备就绪。启动本地 API 后会显示真实内容。</span></> : <span>此文件类型将使用专用查看器打开：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>本地文件系统</strong></div><button type="button" className="secondary">打开原文件</button></aside></div></section>;
+  const binaryUrl = binaryPreview ? `data:${binaryPreview.content_type};base64,${binaryPreview.content_base64}` : null;
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Local data</span><h2>文件与数据</h2><p>查看本地文件、数据库、Agent 记录和附件，不复制原始数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button><button type="button" className="primary"><FolderOpen size={15} />添加目录</button></div></div><div className="file-layout"><aside className="file-tree"><strong>数据源</strong><button className="tree-selected"><FolderOpen size={15} />{source?.name ?? "全部数据"}</button><button><FolderOpen size={15} />知识库</button><button><Database size={15} />数据库</button><button><MessageSquare size={15} />Agent 对话</button><button><Workflow size={15} />运行日志</button><div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "本地索引已连接" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected || "未选择文件"}</h3><p>这里会显示受大小限制的只读预览。原始文件仍然保存在你配置的本地目录中。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selected} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selected} /> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong># 今日晨间简报</strong><br /><br /><span>本地预览已准备就绪。启动本地 API 后会显示真实内容。</span></> : <span>此文件类型将使用专用查看器打开：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>本地文件系统</strong></div><button type="button" className="secondary">打开原文件</button></aside></div></section>;
 }
 function FileGlyph({ type }) {
   if (type === "SQLite") return <Database size={17} />;
