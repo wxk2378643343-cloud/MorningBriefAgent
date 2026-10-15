@@ -46,10 +46,14 @@ def register_source(
     return str(row["id"])
 
 
-def list_sources(*, enabled_only: bool = True) -> list[dict[str, object]]:
-    initialize()
+def list_sources(
+    *,
+    enabled_only: bool = True,
+    database_path: str | os.PathLike[str] | None = None,
+) -> list[dict[str, object]]:
+    initialize(database_path)
     clause = "WHERE enabled = 1" if enabled_only else ""
-    with connect() as connection:
+    with connect(database_path) as connection:
         rows = connection.execute(
             f"SELECT * FROM data_sources {clause} ORDER BY name"
         ).fetchall()
@@ -141,15 +145,20 @@ def scan_source(source_id: str, *, include_hidden: bool = False) -> int:
     return indexed
 
 
-def list_files(source_id: str, *, file_type: str | None = None) -> list[dict[str, object]]:
-    initialize()
+def list_files(
+    source_id: str,
+    *,
+    file_type: str | None = None,
+    database_path: str | os.PathLike[str] | None = None,
+) -> list[dict[str, object]]:
+    initialize(database_path)
     query = "SELECT * FROM file_records WHERE data_source_id = ?"
     params: list[object] = [source_id]
     if file_type:
         query += " AND file_type = ?"
         params.append(file_type)
     query += " ORDER BY relative_path"
-    with connect() as connection:
+    with connect(database_path) as connection:
         rows = connection.execute(query, params).fetchall()
     return [dict(row) for row in rows]
 
