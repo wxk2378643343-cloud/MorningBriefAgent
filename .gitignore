@@ -48,6 +48,7 @@ data/*.json
 data/*.sqlite
 data/*.sqlite3
 data/*.sqlite3-*
+!data/demo.sqlite3
 data/*.db
 data/locks/
 !data/.gitkeep
