@@ -9,6 +9,19 @@ body { margin: 0; min-width: 980px; }
 button, textarea { font: inherit; }
 button { cursor: pointer; }
 .app-shell { display: flex; min-height: 760px; background: #f4f6fa; }
+.startup-screen, .setup-screen { min-height: 100vh; background: radial-gradient(circle at 80% 10%, #eef0ff 0, #f4f6fa 42%, #fff 100%); }
+.startup-card { width: min(520px, calc(100% - 48px)); margin: 0 auto; padding: 42px; position: relative; top: 15vh; border: 1px solid #e1e5ee; border-radius: 20px; background: rgba(255,255,255,.94); box-shadow: 0 20px 55px rgba(36,48,76,.1); }
+.startup-brand { padding: 0 0 45px; }
+.startup-card h1 { margin: 12px 0; color: #182236; font-size: 30px; letter-spacing: -.05em; }
+.startup-card p { color: #718097; line-height: 1.7; font-size: 13px; }
+.startup-action { margin-top: 22px; }
+.setup-topbar { display: flex; justify-content: space-between; align-items: center; padding: 25px max(32px, calc((100% - 1040px) / 2)); }
+.setup-topbar .brand { padding: 0; }
+.setup-main { width: min(1040px, calc(100% - 64px)); margin: 7vh auto 70px; }
+.setup-intro { margin-bottom: 24px; }
+.setup-intro h1 { margin: 10px 0; color: #182236; font-size: 34px; letter-spacing: -.05em; }
+.setup-intro p { margin: 0; color: #718097; font-size: 14px; }
+.setup-message { margin-top: 22px; color: #7b8799; font-size: 12px; }
 .sidebar { width: 226px; padding: 22px 14px; display: flex; flex-direction: column; background: #fbfcfe; border-right: 1px solid #e4e8ef; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 35px; color: #172033; font-size: 15px; font-weight: 700; }
 .brand-mark { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 9px; color: #fff; background: #5966d8; }

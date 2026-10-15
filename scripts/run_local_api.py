@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
+
+# Support launching this file directly from Tauri, PowerShell, or Explorer.
+# Python otherwise puts only ``scripts`` on sys.path, not the project root.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 from core.application.local_api import create_local_server
 from storage.sqlite import initialize

@@ -91,3 +91,19 @@ def reset_step(
             """,
             (step_key,),
         )
+
+
+def reset_all(*, database_path: str | Path | None = None) -> dict[str, Any]:
+    """Reset only the onboarding metadata; never delete the local workspace."""
+    initialize(database_path)
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE onboarding_steps
+            SET status='pending',
+                detail=NULL,
+                completed_at=NULL,
+                updated_at=CURRENT_TIMESTAMP
+            """
+        )
+    return get_status(database_path)
