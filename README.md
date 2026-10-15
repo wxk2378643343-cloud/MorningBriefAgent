@@ -374,6 +374,10 @@ python scripts/init_local_storage.py
 SQLite 只保存可查询的结构化事实、来源 ID、可信度和审计记录。Agent 生成的估算值
 不能自动伪装成已确认事实。
 
+当前第一阶段接入的是生活记录事实：飞书中的饮食或运动记录会保留原始消息来源，
+再写入 SQLite 的 `source_records` 与 `fact_records`。热量、蛋白质等 Agent 估算字段
+需要经过确认后，才能作为正式统计值使用。
+
 Demo 数据库使用独立文件，不会读取或污染真实数据：
 
 ```powershell

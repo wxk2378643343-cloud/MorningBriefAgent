@@ -104,6 +104,7 @@ from .replies import (
     update_feishu_reply as _update_feishu_reply,
 )
 from . import message_processor, progress
+from storage.facts import record_lifestyle_fact
 
 VAULT_ROOT = config.VAULT_ROOT
 
@@ -188,6 +189,7 @@ def process_message_async(sender_open_id: str, user_text: str, msg_id: str):
         update=update_feishu_reply,
         gather_context=gather_agent_context,
         ask_agent=agy_bridge.ask_native_agy,
+        record_fact=record_lifestyle_fact,
         animate=animate_thinking_reply,
         stop_animation=stop_thinking_animation,
         event_fn=event,

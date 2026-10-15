@@ -20,6 +20,7 @@ def process_message(
     update: Callable[..., bool],
     gather_context: Callable[[str], str],
     ask_agent: Callable[[str, str, str], str],
+    record_fact: Callable[..., str] | None = None,
     animate: Callable[[str, threading.Event], None],
     stop_animation: Callable[..., None],
     event_fn: Callable[..., None],
@@ -69,6 +70,13 @@ def process_message(
                 "请使用可用的图片读取能力查看附件，并只根据图片真实细节回答。"
             )
         if archive_result:
+            if record_fact:
+                record_fact(
+                    message_id=msg_id,
+                    category=archive_result["category"],
+                    text=user_text,
+                    image_paths=archive_result.get("image_paths", []),
+                )
             user_text += (
                 "\n\n【确定性本地归档状态】：已写入 Obsidian 的"
                 f"“{archive_result['category']}”记录。"
