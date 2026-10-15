@@ -12,6 +12,8 @@ permissions:
 jobs:
   unittest:
     runs-on: ubuntu-latest
+    env:
+      AGY_CONVERSATION_ID: ci-test-conversation
     steps:
       - name: Checkout
         uses: actions/checkout@v4
