@@ -385,7 +385,10 @@ FITNESS_ARCHIVE_DIR=D:\path\to\knowledge-base\activity-archive
 CHAT_ARCHIVE_DIR=D:\path\to\knowledge-base\chat-reviews
 ```
 
-未配置这些路径时，服务仍可生成 Agent 计划并同步飞书任务/日历，但不会擅自创建或猜测本地知识库目录。
+未配置这些路径时，服务仍可生成 Agent 计划并同步飞书任务/日历；计划投影会使用
+真实 Vault 下的 `03 - 待办事项/Agent-今日待办.md` 和
+`03 - 待办事项/Agent-日程.md` 默认文件。也可以通过
+`TODO_MARKDOWN_PATH` 和 `SCHEDULE_MARKDOWN_PATH` 显式指定文件。
 
 ### Obsidian Demo 与本地事实库
 

@@ -13,6 +13,7 @@ from core.agent import provider as agent_provider
 from core.agent.contracts import AgentPlan
 from core.runtime import config
 from storage.planning import persist_plan
+from services.knowledge import project_plan
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -86,6 +87,8 @@ def save_staged_plan(
         )
         try:
             persist_plan(data)
+            if path is None:
+                project_plan(data)
         except Exception as exc:
             print(f"⚠️ 同步计划到 SQLite 异常: {exc}")
     except OSError as exc:

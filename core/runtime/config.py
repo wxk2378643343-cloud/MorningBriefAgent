@@ -80,6 +80,8 @@ CHAT_ARCHIVE_DIR = os.getenv("CHAT_ARCHIVE_DIR", "")
 STAGED_PLAN_PATH = os.getenv(
     "STAGED_PLAN_PATH", str(PROJECT_ROOT / "data" / "staged_plan.json")
 )
+TODO_MARKDOWN_PATH = os.getenv("TODO_MARKDOWN_PATH", "")
+SCHEDULE_MARKDOWN_PATH = os.getenv("SCHEDULE_MARKDOWN_PATH", "")
 IDEMPOTENCY_STORE_PATH = os.getenv(
     "IDEMPOTENCY_STORE_PATH", str(PROJECT_ROOT / "data" / "idempotency.sqlite3")
 )
