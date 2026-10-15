@@ -22,6 +22,7 @@ from storage.data_sources import (
 )
 from storage.onboarding import complete_step, get_status
 from storage.workspace import initialize_workspace, save_personal_context, workspace_info
+from storage.agent_status import read_agent_status
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -42,6 +43,8 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(discovery_snapshot())
         elif self.path == "/api/v1/channels":
             self._send_json({"channels": discovery_snapshot()["channels"]})
+        elif self.path == "/api/v1/agent/status":
+            self._send_json(read_agent_status(self.server.database_path))
         elif self.path == "/api/v1/data-sources":
             self._send_json({"sources": list_sources(database_path=self.server.database_path)})
         elif self.path.startswith("/api/v1/file-binary"):

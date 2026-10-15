@@ -86,6 +86,7 @@ function App() {
     offline: "演示模式：本地服务未连接",
     stopping: "本地服务正在停止",
   }[serviceState];
+  if (activeSection === "Agent 运行") return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div><div className="workspace-label">本地工作台</div><nav><NavItem icon={<LayoutDashboard size={17} />} label="工作台" active={false} onClick={() => setActiveSection("工作台")} /><NavItem icon={<FolderOpen size={17} />} label="文件与数据" active={false} onClick={() => setActiveSection("文件与数据")} /><NavItem icon={<Workflow size={17} />} label="工作流" active={false} onClick={() => setActiveSection("工作流")} /><NavItem icon={<Database size={17} />} label="数据库" active={false} onClick={() => setActiveSection("数据库")} /><NavItem icon={<Bot size={17} />} label="Agent 运行" active onClick={() => setActiveSection("Agent 运行")} /></nav></aside><main className="main"><header className="topbar"><div><span className="eyebrow">Runtime</span><h1>Agent 运行状态</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header><AgentRuntime serviceState={serviceState} /></main></div>;
   const currentIndex = Math.max(0, steps.findIndex((step) => step.key === currentStep));
   const completeStep = async (stepKey, detail) => {
     try {
@@ -152,6 +153,15 @@ function SectionPlaceholder({ section }) {
   };
   return <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25} /></div><span className="eyebrow">Preview</span><h2>{section}</h2><p>{descriptions[section]}</p><button className="primary" type="button" onClick={() => window.location.reload()}>返回工作台</button></section>;
 }
+function AgentRuntime({ serviceState }) {
+  const [status, setStatus] = useState({ latest: null, recent: [], sync: { pending: 0, failed: 0 } });
+  const [live, setLive] = useState(false);
+  const load = () => fetch(apiUrl("/api/v1/agent/status")).then((response) => response.json()).then((payload) => { setStatus(payload); setLive(true); }).catch(() => setLive(false));
+  useEffect(() => { load(); const timer = window.setInterval(load, 5000); return () => window.clearInterval(timer); }, []);
+  const latest = status.latest;
+  return <section className="runtime-page"><div className="runtime-cards"><RuntimeCard label="当前 Provider" value={latest?.provider ?? "暂无记录"} /><RuntimeCard label="最近任务" value={latest?.task ?? "暂无运行"} /><RuntimeCard label="总 Token" value={latest?.total_tokens ?? "—"} /><RuntimeCard label="耗时" value={latest?.duration_ms ? `${latest.duration_ms} ms` : "—"} /></div><div className="runtime-grid"><div className="runtime-panel"><div className="db-title"><div><span className="eyebrow">Recent runs</span><h3>最近 Agent 运行</h3></div><span className={`status-pill ${live && serviceState === "ready" ? "ok" : ""}`}>{live ? "已连接" : "演示模式"}</span></div><table><thead><tr><th>任务</th><th>Provider</th><th>Token</th><th>状态</th><th>时间</th></tr></thead><tbody>{status.recent.map((run, index) => <tr key={`${run.created_at}-${index}`}><td>{run.task}</td><td>{run.provider}</td><td>{run.total_tokens ?? "—"}</td><td>{run.status}</td><td>{run.created_at}</td></tr>)}{!status.recent.length && <tr><td colSpan="5">暂无 Agent 运行记录</td></tr>}</tbody></table></div><aside className="runtime-panel"><span className="eyebrow">Feishu sync</span><h3>同步状态</h3><div className="detail-line"><span>待处理</span><strong>{status.sync.pending}</strong></div><div className="detail-line"><span>失败待重试</span><strong>{status.sync.failed}</strong></div><button className="secondary" onClick={load}><RefreshCw size={15} />刷新状态</button></aside></div></section>;
+}
+function RuntimeCard({ label, value }) { return <div className="runtime-card"><span>{label}</span><strong>{value}</strong></div>; }
 function FileWorkspace({ serviceState }) {
   const demoFiles = [
     ["2026-10-15-晨间简报.md", "Markdown", "知识库 / briefings", "今天 07:45"],
