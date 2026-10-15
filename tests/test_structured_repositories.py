@@ -8,7 +8,13 @@ from pathlib import Path
 
 from storage.facts import record_lifestyle_fact
 from storage.market import save_fund_snapshot, save_news_item
-from storage.planning import list_open_todos, save_schedule, save_todo
+from storage.planning import (
+    attach_feishu_event_id,
+    attach_feishu_task_id,
+    list_open_todos,
+    save_schedule,
+    save_todo,
+)
 
 
 class StructuredRepositoryTests(unittest.TestCase):
@@ -68,6 +74,53 @@ class StructuredRepositoryTests(unittest.TestCase):
 
         self.assertGreater(snapshot_id, 0)
         self.assertTrue(news_id.startswith("news:"))
+
+    def test_provider_ids_attach_to_projected_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            database = str(Path(tmp) / "app.sqlite3")
+            source_id = "plan:2026-10-16"
+            save_todo(
+                title="同步待办",
+                source_id=source_id,
+                due_date="2026-10-16",
+                database_path=database,
+            )
+            attach_feishu_task_id(
+                title="同步待办",
+                source_id=source_id,
+                due_date="2026-10-16",
+                feishu_task_id="task-1",
+                database_path=database,
+            )
+            save_schedule(
+                title="深度工作",
+                source_id=source_id,
+                start_at="2026-10-16T09:00:00",
+                end_at="2026-10-16T10:00:00",
+                database_path=database,
+            )
+            attach_feishu_event_id(
+                title="深度工作",
+                source_id=source_id,
+                start_at="2026-10-16T09:00:00",
+                end_at="2026-10-16T10:00:00",
+                feishu_event_id="event-1",
+                database_path=database,
+            )
+            from storage.sqlite import connect
+            with connect(database) as connection:
+                todo = connection.execute(
+                    "SELECT feishu_task_id FROM todo_records"
+                ).fetchone()
+                schedule = connection.execute(
+                    "SELECT feishu_event_id, sync_status FROM schedule_records"
+                ).fetchone()
+
+        self.assertEqual(todo["feishu_task_id"], "task-1")
+        self.assertEqual(dict(schedule), {
+            "feishu_event_id": "event-1",
+            "sync_status": "synced",
+        })
 
 
 if __name__ == "__main__":

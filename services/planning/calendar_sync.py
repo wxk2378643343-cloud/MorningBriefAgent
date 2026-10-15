@@ -10,7 +10,7 @@ from core.integrations.feishu import idempotency
 from core.integrations.sync_outbox import sync_outbox
 
 
-def sync_plan_to_calendar(plan_data: dict[str, Any], gateway) -> int:
+def sync_plan_to_calendar(plan_data: dict[str, Any], gateway, record_event=None) -> int:
     plan = AgentPlan.from_dict(plan_data)
     written_count = 0
     target_date = datetime.date.fromisoformat(plan.date)
@@ -56,6 +56,8 @@ def sync_plan_to_calendar(plan_data: dict[str, Any], gateway) -> int:
             )
             if result and result[0]:
                 written_count += 1
+                if record_event and result[1]:
+                    record_event(slot, str(result[1]))
         except Exception as exc:
             sync_outbox.finish(
                 key,

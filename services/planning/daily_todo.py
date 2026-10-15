@@ -74,6 +74,7 @@ def complete_task_by_keyword(keyword: str) -> Optional[str]:
 SERVICES_DIR = os.path.join(PROJECT_ROOT, "services")
 from . import review_sync as review_sync_service
 from . import calendar_sync, task_sync
+from storage.planning import attach_feishu_event_id, attach_feishu_task_id
 
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 STAGED_PLAN_FILE = str(plan_generation.DEFAULT_STAGED_PLAN_FILE)
@@ -532,14 +533,36 @@ def handle_todo_intent(user_text: str) -> Optional[str]:
 
 def sync_plan_to_calendar(plan_data: Dict[str, Any]) -> int:
     try:
-        return calendar_sync.sync_plan_to_calendar(plan_data, feishu_gateway)
+        source_id = f"plan:{plan_data.get('date', 'unknown')}"
+        target_date = str(plan_data.get("date", ""))
+        return calendar_sync.sync_plan_to_calendar(
+            plan_data,
+            feishu_gateway,
+            record_event=lambda slot, event_id: attach_feishu_event_id(
+                title=slot.name,
+                source_id=source_id,
+                start_at=f"{target_date}T{slot.start}:00",
+                end_at=f"{target_date}T{slot.end}:00",
+                feishu_event_id=event_id,
+            ),
+        )
     except (TypeError, ValueError) as exc:
         print(f"⚠️ 日历同步跳过，计划契约无效: {exc}")
         return 0
 
 def sync_plan_to_feishu_tasks(plan_data: Dict[str, Any]) -> int:
     try:
-        return task_sync.sync_plan_to_feishu_tasks(plan_data, create_feishu_task)
+        source_id = f"plan:{plan_data.get('date', 'unknown')}"
+        return task_sync.sync_plan_to_feishu_tasks(
+            plan_data,
+            create_feishu_task,
+            record_task=lambda title, task_id: attach_feishu_task_id(
+                title=title,
+                source_id=source_id,
+                due_date=str(plan_data.get("date", "")) or None,
+                feishu_task_id=task_id,
+            ),
+        )
     except (TypeError, ValueError) as exc:
         print(f"⚠️ 任务同步跳过，计划契约无效: {exc}")
         return 0

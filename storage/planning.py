@@ -84,6 +84,45 @@ def save_schedule(
     return event_id
 
 
+def attach_feishu_task_id(
+    *,
+    title: str,
+    source_id: str,
+    due_date: str | None,
+    feishu_task_id: str,
+    database_path: str | None = None,
+) -> None:
+    initialize(database_path)
+    todo_id = _id("todo", f"{source_id}:{title}:{due_date or ''}")
+    with connect(database_path) as connection:
+        connection.execute(
+            "UPDATE todo_records SET feishu_task_id=?, updated_at=CURRENT_TIMESTAMP WHERE id=?",
+            (feishu_task_id, todo_id),
+        )
+
+
+def attach_feishu_event_id(
+    *,
+    title: str,
+    source_id: str,
+    start_at: str,
+    end_at: str,
+    feishu_event_id: str,
+    database_path: str | None = None,
+) -> None:
+    initialize(database_path)
+    event_id = _id("schedule", f"{source_id}:{title}:{start_at}:{end_at}")
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            UPDATE schedule_records
+            SET feishu_event_id=?, sync_status='synced', updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (feishu_event_id, event_id),
+        )
+
+
 def list_open_todos(
     *, due_date: str | None = None, database_path: str | None = None
 ) -> list[dict[str, Any]]:

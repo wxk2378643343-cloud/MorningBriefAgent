@@ -11,6 +11,7 @@ from core.integrations.feishu import idempotency
 def sync_plan_to_feishu_tasks(
     plan_data: dict[str, Any],
     create_task: Callable[..., dict | None],
+    record_task: Callable[[str, str], None] | None = None,
 ) -> int:
     plan = AgentPlan.from_dict(plan_data)
     created_count = 0
@@ -24,6 +25,9 @@ def sync_plan_to_feishu_tasks(
             )
             if task:
                 created_count += 1
+                provider_id = task.get("task_id") or task.get("id")
+                if provider_id and record_task:
+                    record_task(title, str(provider_id))
         except Exception:
             # The create service records the failed outbox attempt; continue
             # syncing independent tasks so one provider error is isolated.
