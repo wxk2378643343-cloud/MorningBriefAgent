@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 from core.application.local_api import create_local_server
 from storage.sqlite import initialize
 from storage.workspace import WORKSPACE_DIRECTORIES, initialize_workspace
+from storage.usage import record_usage
 
 
 class DesktopWorkspaceTests(unittest.TestCase):
@@ -63,6 +64,35 @@ class DesktopWorkspaceTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+
+    def test_agent_status_returns_latest_usage_without_exposing_secrets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            record_usage(
+                task="desktop-test",
+                provider="deepseek",
+                input_tokens=4,
+                output_tokens=6,
+                duration_ms=12,
+                database_path=database,
+            )
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                payload = self._get(f"http://127.0.0.1:{server.server_port}/api/v1/agent/status")
+                self.assertEqual(payload["latest"]["total_tokens"], 10)
+                self.assertNotIn("api_key", json.dumps(payload))
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    @staticmethod
+    def _get(url):
+        with urlopen(url) as response:
+            return json.loads(response.read().decode("utf-8"))
 
     @staticmethod
     def _post(url, payload):
