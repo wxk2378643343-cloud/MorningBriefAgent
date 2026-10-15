@@ -7,6 +7,22 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from storage.usage import clear_last_usage, get_last_usage
+
+
+def _append_usage_footer(reply_text: str) -> str:
+    usage = get_last_usage()
+    if not usage or not isinstance(reply_text, str):
+        return reply_text
+    source = "估算" if usage.get("token_source") == "estimated" else "实际"
+    return (
+        f"{reply_text.rstrip()}\n\n"
+        f"<sub>Token：{source}输入 {usage.get('input_tokens') or 0} · "
+        f"输出 {usage.get('output_tokens') or 0} · "
+        f"合计 {usage.get('total_tokens') or 0} · "
+        f"{usage.get('provider', 'unknown')}</sub>"
+    )
+
 
 def process_message(
     sender_open_id: str,
@@ -128,7 +144,9 @@ def process_message(
             animation_thread.start()
 
         logger.info("agent_started message_id=%s", msg_id)
+        clear_last_usage()
         reply_text = ask_agent(sender_open_id, user_text, context)
+        reply_text = _append_usage_footer(reply_text)
         if estimate_result and estimate_result.get("status") == "pending":
             calories = estimate_result.get("calories_estimated")
             protein = estimate_result.get("protein_estimated")

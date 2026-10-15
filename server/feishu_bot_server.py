@@ -92,6 +92,7 @@ from collections import deque
 from core.runtime import config
 from core.integrations.feishu import calendar as feishu_calendar
 from core.agent import agy_bridge
+from core.agent import provider as agent_provider
 from services.planning import daily_todo as daily_todo_service
 from services.lifestyle import feishu_archive
 from core.agent import context as agent_context
@@ -177,6 +178,15 @@ def gather_agent_context(query: str) -> str:
     context = agent_context.collect_context(query)
     return f"【当前时间】\n{now}\n\n{context or '没有配置本地知识库上下文。'}"
 
+
+def ask_agent_for_message(
+    sender_open_id: str,
+    prompt: str,
+    context: str = "",
+) -> str:
+    """Use the shared provider boundary so conversation usage is recorded."""
+    return agent_provider.ask_text("feishu-conversation", prompt, context)
+
 @traced(logger, "server.process_message")
 def process_message_async(sender_open_id: str, user_text: str, msg_id: str):
     """Worker task executed in thread pool to prevent blocking WebSocket loop."""
@@ -190,7 +200,7 @@ def process_message_async(sender_open_id: str, user_text: str, msg_id: str):
         reply=reply_feishu_message,
         update=update_feishu_reply,
         gather_context=gather_agent_context,
-        ask_agent=agy_bridge.ask_native_agy,
+        ask_agent=ask_agent_for_message,
         record_fact=record_lifestyle_fact,
         estimate_meal=estimate_meal,
         confirm_lifestyle=handle_confirmation,

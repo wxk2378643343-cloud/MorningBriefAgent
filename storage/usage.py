@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import time
 import uuid
+import threading
 from typing import Any
 
 from .sqlite import connect, initialize
+
+_LAST_USAGE = threading.local()
 
 
 def estimate_tokens(text: str) -> int:
@@ -42,7 +45,23 @@ def record_usage(
             (request_id, task, provider, input_tokens, output_tokens, total,
              token_source, duration_ms, status),
         )
+    _LAST_USAGE.value = {
+        "provider": provider,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total,
+        "token_source": token_source,
+    }
     return request_id
+
+
+def get_last_usage() -> dict[str, Any] | None:
+    """Return usage for the current worker thread's latest Agent call."""
+    return getattr(_LAST_USAGE, "value", None)
+
+
+def clear_last_usage() -> None:
+    _LAST_USAGE.value = None
 
 
 def usage_summary(*, database_path: str | None = None) -> dict[str, Any]:

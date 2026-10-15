@@ -646,7 +646,7 @@ class MockIntegrationTests(unittest.TestCase):
             "gather_agent_context",
             return_value="context",
         ), mock.patch.object(
-            feishu_bot_server.agy_bridge,
+            feishu_bot_server.agent_provider.agy_bridge,
             "ask_native_agy",
             return_value="最终回答",
         ), mock.patch.object(

@@ -11,6 +11,7 @@ from core.agent import provider
 from services.knowledge.projector import project_plan
 from storage.sqlite import connect
 from storage.usage import usage_summary
+from server.message_processor import _append_usage_footer
 
 
 class UsageAndProjectionTests(unittest.TestCase):
@@ -53,3 +54,17 @@ class UsageAndProjectionTests(unittest.TestCase):
             record_usage(task="x", provider="mock", input_tokens=3,
                          output_tokens=4, database_path=database)
             self.assertEqual(usage_summary(database_path=database)["total_tokens"], 7)
+
+    def test_reply_footer_is_small_and_only_added_after_agent_usage(self):
+        with mock.patch(
+            "server.message_processor.get_last_usage",
+            return_value={
+                "provider": "agy",
+                "input_tokens": 10,
+                "output_tokens": 4,
+                "total_tokens": 14,
+                "token_source": "estimated",
+            },
+        ):
+            reply = _append_usage_footer("完成了")
+        self.assertIn("<sub>Token：估算输入 10 · 输出 4 · 合计 14 · agy</sub>", reply)
