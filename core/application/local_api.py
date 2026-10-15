@@ -31,6 +31,11 @@ from storage.workflows import list_runs, list_workflows, run_workflow
 class _Handler(BaseHTTPRequestHandler):
     server_version = "MorningBriefLocalAPI/1.0"
 
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self._send_cors_headers()
+        self.end_headers()
+
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/v1/health":
             self._send_json({"status": "ok", "service": "morningbrief-local-api"})
@@ -307,8 +312,17 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        self._send_cors_headers()
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _send_cors_headers(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin in {"http://127.0.0.1:4173", "http://localhost:4173"}:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def log_message(self, *_args: object) -> None:
         return
