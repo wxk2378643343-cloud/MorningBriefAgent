@@ -62,7 +62,78 @@ CREATE TABLE IF NOT EXISTS workout_records (
     FOREIGN KEY (fact_id) REFERENCES fact_records(id)
 );
 
+CREATE TABLE IF NOT EXISTS todo_records (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'open',
+    priority TEXT NOT NULL DEFAULT 'normal',
+    due_date TEXT,
+    feishu_task_id TEXT,
+    completed_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES source_records(id)
+);
+
+CREATE TABLE IF NOT EXISTS schedule_records (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    start_at TEXT NOT NULL,
+    end_at TEXT NOT NULL,
+    feishu_event_id TEXT,
+    sync_status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES source_records(id)
+);
+
+CREATE TABLE IF NOT EXISTS fund_records (
+    id TEXT PRIMARY KEY,
+    fund_code TEXT NOT NULL,
+    fund_name TEXT,
+    shares REAL,
+    cost_price REAL,
+    source_id TEXT,
+    recorded_at TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES source_records(id)
+);
+
+CREATE TABLE IF NOT EXISTS fund_market_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fund_code TEXT NOT NULL,
+    price REAL,
+    change_percent REAL,
+    market_time TEXT NOT NULL,
+    data_source TEXT NOT NULL,
+    is_realtime INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS news_items (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    url TEXT,
+    published_at TEXT,
+    category TEXT NOT NULL,
+    summary TEXT,
+    content_hash TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES source_records(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
     ON fact_records(source_id);
+CREATE INDEX IF NOT EXISTS idx_todo_records_status_due
+    ON todo_records(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_schedule_records_time
+    ON schedule_records(start_at, end_at);
+CREATE INDEX IF NOT EXISTS idx_fund_snapshots_code_time
+    ON fund_market_snapshots(fund_code, market_time);
+CREATE INDEX IF NOT EXISTS idx_news_items_published
+    ON news_items(published_at);
