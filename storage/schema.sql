@@ -177,6 +177,24 @@ CREATE TABLE IF NOT EXISTS file_records (
     UNIQUE (data_source_id, relative_path)
 );
 
+CREATE TABLE IF NOT EXISTS installation_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    setup_version INTEGER NOT NULL DEFAULT 1,
+    completed INTEGER NOT NULL DEFAULT 0,
+    selected_provider TEXT,
+    selected_channel TEXT,
+    workspace_root TEXT,
+    completed_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS local_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    is_secret INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
