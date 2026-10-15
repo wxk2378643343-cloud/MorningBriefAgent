@@ -23,6 +23,7 @@ from storage.data_sources import (
 from storage.onboarding import complete_step, get_status
 from storage.workspace import initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
+from core.runtime.config import PROJECT_ROOT
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -46,7 +47,14 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/v1/agent/status":
             self._send_json(read_agent_status(self.server.database_path))
         elif self.path == "/api/v1/data-sources":
-            self._send_json({"sources": list_sources(database_path=self.server.database_path)})
+            sources = list_sources(database_path=self.server.database_path)
+            if not sources:
+                demo_root = PROJECT_ROOT / "demo" / "obsidian"
+                if demo_root.is_dir():
+                    source_id = register_source("Demo Obsidian", demo_root, database_path=self.server.database_path)
+                    scan_source(source_id, database_path=self.server.database_path)
+                    sources = list_sources(database_path=self.server.database_path)
+            self._send_json({"sources": sources})
         elif self.path.startswith("/api/v1/file-binary"):
             source_id = self._query_value("source_id")
             relative_path = self._query_value("path")
