@@ -17,6 +17,15 @@ class LocalFileApiTests(unittest.TestCase):
             root = Path(temp_dir) / "vault"
             root.mkdir()
             (root / "brief.md").write_text("# Brief", encoding="utf-8")
+            sqlite_file = root / "sample.sqlite3"
+            import sqlite3
+            database_handle = sqlite3.connect(sqlite_file)
+            try:
+                database_handle.execute("CREATE TABLE notes (id INTEGER, body TEXT)")
+                database_handle.execute("INSERT INTO notes VALUES (1, 'hello')")
+                database_handle.commit()
+            finally:
+                database_handle.close()
             database = Path(temp_dir) / "app.sqlite3"
             initialize(database)
             import storage.data_sources as data_sources
@@ -37,9 +46,15 @@ class LocalFileApiTests(unittest.TestCase):
                 preview = self._get(
                     f"{base}/api/v1/files?source_id={source_id}&path=brief.md"
                 )
+                database = self._get(
+                    f"{base}/api/v1/sqlite?source_id={source_id}"
+                    f"&path=sample.sqlite3&table=notes"
+                )
                 self.assertEqual(sources["sources"][0]["name"], "Vault")
                 self.assertEqual(files["files"][0]["relative_path"], "brief.md")
                 self.assertEqual(preview["file"]["content"], "# Brief")
+                self.assertEqual(database["database"]["tables"], ["notes"])
+                self.assertEqual(database["database"]["rows"][0]["body"], "hello")
             finally:
                 server.shutdown()
                 server.server_close()
