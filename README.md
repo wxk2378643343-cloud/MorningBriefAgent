@@ -313,6 +313,11 @@ python scripts/init_local_storage.py --demo
 `data/app.sqlite3`。真实数据库位置默认为 `data/app.sqlite3`，个人数据库、
 配置、日志和图片不会提交到 Git。
 
+Provider 对比测试的完整说明见
+[docs/provider-evaluation.md](D:/Project/MorningBriefAgent/docs/provider-evaluation.md)。
+它用于比较 AGY 与 DeepSeek 的速度、Token、结构化输出和业务可靠性，
+不会把个人知识库直接发送给外部 API。
+
 ## 配置
 
 项目根目录的 `.env` 会在导入配置时自动加载，已经存在的系统环境变量优先级更高。`.env` 被 Git 忽略；只提交 `.env.example`。
