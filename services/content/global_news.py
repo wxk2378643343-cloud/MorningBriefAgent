@@ -13,6 +13,7 @@ from core.integrations.feishu.idempotency import make_key
 from core.pipeline import QualityReport, SourceStatus
 from core.runtime import config
 from services.content import news_analysis, news_renderer, news_sources
+from storage.market import save_news_item
 
 
 LOCAL_PROXY = config.LOCAL_PROXY
@@ -214,6 +215,34 @@ def main() -> bool:
         print(f"⚠️ 新闻质量门禁未通过：{'；'.join(quality.issues)}")
         return False
     news_data, tech_items = validate_news_inputs(collected_news, collected_tech)
+    for category, items in (
+        ("domestic", news_data.get("domestic", [])),
+        ("world", news_data.get("world", [])),
+    ):
+        for item in items:
+            try:
+                save_news_item(
+                    title=str(item.get("title", "")),
+                    source_id=str(item.get("source_id", "")),
+                    category=category,
+                    url=str(item.get("link", "")),
+                    published_at=str(item.get("published", "")),
+                    summary=str(item.get("desc", "")),
+                )
+            except Exception as exc:
+                print(f"⚠️ 保存新闻条目失败: {exc}")
+    for item in tech_items:
+        try:
+            save_news_item(
+                title=str(item.get("name", "")),
+                source_id=str(item.get("source_id", "")),
+                category="technology",
+                url=str(item.get("url", "")),
+                published_at=str(item.get("published", "")),
+                summary=str(item.get("desc", "")),
+            )
+        except Exception as exc:
+            print(f"⚠️ 保存技术条目失败: {exc}")
     takeaway = generate_news_takeaway(news_data, tech_items)
     card = build_feishu_news_card(
         news_data, tech_items, quality, takeaway=takeaway

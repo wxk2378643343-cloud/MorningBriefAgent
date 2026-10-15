@@ -36,6 +36,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 from core.runtime import config
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.idempotency import make_key
+from storage.market import save_fund_snapshot
 
 BENCHMARK_SYMBOLS = ["sh000001", "sz399006", "hkHSI"]
 
@@ -109,6 +110,27 @@ def fetch_realtime_quotes(symbols: List[str]) -> Dict[str, Dict[str, float]]:
     return quotes
 
 
+def persist_quote_snapshots(
+    quotes: Dict[str, Dict[str, float]],
+    *,
+    observed_at: datetime.datetime | None = None,
+) -> None:
+    """Persist market observations with source time; never overwrite history."""
+    observed_at = observed_at or datetime.datetime.now(datetime.timezone.utc)
+    for symbol, quote in quotes.items():
+        try:
+            save_fund_snapshot(
+                fund_code=symbol,
+                price=quote.get("price"),
+                change_percent=quote.get("change_pct"),
+                market_time=observed_at.isoformat(timespec="seconds"),
+                data_source=config.MARKET_DATA_URL,
+                is_realtime=True,
+            )
+        except Exception as exc:
+            logger.warning("保存行情快照失败 symbol=%s error=%s", symbol, exc)
+
+
 def _trading_days_until(target_date: str) -> int:
     try:
         end = datetime.datetime.strptime(target_date, "%Y-%m-%d").date()
@@ -137,6 +159,7 @@ def generate_advisor_report() -> str:
         )
 
     quotes = fetch_realtime_quotes(_symbols(config_data))
+    persist_quote_snapshots(quotes)
     total_cost = sum(float(item.get("cost_value", 0)) for item in portfolio)
     total_value = sum(float(item.get("current_value", 0)) for item in portfolio)
     total_profit = sum(float(item.get("profit", 0)) for item in portfolio)

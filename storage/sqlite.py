@@ -12,10 +12,20 @@ from core.runtime import config
 SCHEMA_VERSION = 1
 
 
+class ManagedConnection(sqlite3.Connection):
+    """Close SQLite handles when used in a ``with connect(...)`` block."""
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
     database = Path(path or config.SQLITE_DATABASE_PATH)
     database.parent.mkdir(parents=True, exist_ok=True)
-    connection = sqlite3.connect(database)
+    connection = sqlite3.connect(database, factory=ManagedConnection)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute("PRAGMA journal_mode = WAL")
