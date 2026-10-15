@@ -16,6 +16,8 @@ from storage.data_sources import (
     list_sources,
     read_file_binary,
     read_file_preview,
+    register_source,
+    scan_source,
 )
 from storage.onboarding import complete_step, get_status
 
@@ -97,6 +99,32 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/api/v1/data-sources":
+            try:
+                payload = self._read_json()
+                root_path = str(payload.get("root_path", "")).strip()
+                name = str(payload.get("name", "")).strip()
+                if not root_path:
+                    raise ValueError("root_path_required")
+                source_id = register_source(
+                    name or Path(root_path).name,
+                    root_path,
+                    database_path=self.server.database_path,
+                )
+                indexed = scan_source(
+                    source_id,
+                    database_path=self.server.database_path,
+                )
+            except (ValueError, TypeError, OSError) as exc:
+                self._send_json(
+                    {"error": "invalid_data_source", "message": str(exc)},
+                    HTTPStatus.BAD_REQUEST,
+                )
+                return
+            self._send_json(
+                {"source_id": source_id, "indexed_files": indexed}
+            )
+            return
         if self.path != "/api/v1/onboarding/complete":
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
             return

@@ -77,6 +77,11 @@ class LocalFileApiTests(unittest.TestCase):
                 self.assertEqual(database["database"]["tables"], ["notes"])
                 self.assertEqual(database["database"]["rows"][0]["body"], "hello")
                 self.assertEqual(binary["file"]["content_type"], "image/png")
+                created = self._post(
+                    f"{base}/api/v1/data-sources",
+                    {"name": "Vault copy", "root_path": str(root)},
+                )
+                self.assertEqual(created["indexed_files"], 3)
             finally:
                 server.shutdown()
                 server.server_close()
@@ -85,6 +90,19 @@ class LocalFileApiTests(unittest.TestCase):
     @staticmethod
     def _get(url):
         with urlopen(url) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _post(url, payload):
+        from urllib.request import Request
+
+        request = Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urlopen(request) as response:
             return json.loads(response.read().decode("utf-8"))
 
 

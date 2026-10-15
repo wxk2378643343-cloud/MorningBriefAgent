@@ -21,14 +21,15 @@ def register_source(
     source_type: str = "local_folder",
     read_only: bool = True,
     source_id: str | None = None,
+    database_path: str | os.PathLike[str] | None = None,
 ) -> str:
     """Register a local directory without copying or moving its contents."""
     root = Path(root_path).expanduser().resolve()
     if not root.is_dir():
         raise NotADirectoryError(str(root))
-    initialize()
+    initialize(database_path)
     identifier = source_id or f"source-{uuid4().hex}"
-    with connect() as connection:
+    with connect(database_path) as connection:
         connection.execute(
             """
             INSERT INTO data_sources
@@ -87,10 +88,15 @@ def _hash_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
-def scan_source(source_id: str, *, include_hidden: bool = False) -> int:
+def scan_source(
+    source_id: str,
+    *,
+    include_hidden: bool = False,
+    database_path: str | os.PathLike[str] | None = None,
+) -> int:
     """Index file metadata for one source; original files remain untouched."""
-    initialize()
-    with connect() as connection:
+    initialize(database_path)
+    with connect(database_path) as connection:
         source = connection.execute(
             "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
             (source_id,),
