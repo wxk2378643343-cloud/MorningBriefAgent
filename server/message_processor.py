@@ -175,6 +175,16 @@ def process_message(
                 msg_id, reply_text,
                 title="🤖 AGY 智能协同助手", template="blue",
             )
+        else:
+            # Updating a Feishu card in place does not reliably create a new
+            # notification. Send a tiny completion event without duplicating
+            # the Agent answer, so the user is alerted to open the final card.
+            reply(
+                msg_id,
+                "✅ 处理完成，最终结果已更新到上一张卡片。",
+                title="🤖 AGY 智能协同助手 · 已完成",
+                template="green",
+            )
     except Exception as exc:
         logger.error(
             "message_processing_failed message_id=%s error=%s",
