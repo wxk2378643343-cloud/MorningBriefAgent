@@ -156,6 +156,7 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/api/v1/workspace/initialize-demo":
             try:
                 demo_root = PROJECT_ROOT / "demo" / "obsidian"
+                initialize_workspace(PROJECT_ROOT / "demo", database_path=self.server.database_path)
                 source_id = register_source("Demo Obsidian", demo_root, database_path=self.server.database_path)
                 indexed = scan_source(source_id, database_path=self.server.database_path)
                 self._send_json({"workspace": workspace_info(self.server.database_path), "source_id": source_id, "indexed_files": indexed})
