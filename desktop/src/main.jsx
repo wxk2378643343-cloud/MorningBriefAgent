@@ -125,7 +125,7 @@ function App() {
           <NavItem icon={<Database size={17} />} label="数据库" active={activeSection === "数据库"} onClick={() => setActiveSection("数据库")} />
           <NavItem icon={<Bot size={17} />} label="Agent 运行" active={activeSection === "Agent 运行"} onClick={() => setActiveSection("Agent 运行")} />
         </nav>
-        <div className="sidebar-bottom"><NavItem icon={<Settings2 size={17} />} label="设置" /><div className="local-only"><span /> 仅在本机运行</div></div>
+        <div className="sidebar-bottom"><NavItem icon={<Settings2 size={17} />} label="设置" active={activeSection === "设置"} onClick={() => setActiveSection("设置")} /><div className="local-only"><span /> 仅在本机运行</div></div>
       </aside>
       <main className="main">
         <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header>
@@ -315,10 +315,14 @@ function WorkspaceStep({ onComplete }) {
     } catch { setBusy(false); setError("工作区初始化失败，请确认目录可写且本地 API 已启动。"); }
   };
   const chooseDirectory = async () => {
+    if (!window.__TAURI_INTERNALS__) {
+      setError("当前是浏览器预览，不能打开系统文件夹选择器；请直接输入本地路径，或运行 Tauri 桌面版。");
+      return;
+    }
     try {
       const selected = await open({ directory: true, multiple: false, title: "选择 MorningBrief 工作区" });
       if (typeof selected === "string") setRoot(selected);
-    } catch { /* Browser preview keeps the manual path field available. */ }
+    } catch { setError("系统文件夹选择器打开失败，请直接输入本地路径。"); }
   };
   return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>配置本地工作区</h4><p>选择你自己的本地目录。应用只会在该目录建立必要的本地目录和 SQLite，不上传任何内容。</p><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
