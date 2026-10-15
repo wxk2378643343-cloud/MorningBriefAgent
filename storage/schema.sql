@@ -40,6 +40,28 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS meal_records (
+    fact_id TEXT PRIMARY KEY,
+    calories_estimated REAL,
+    calories_confirmed REAL,
+    protein_estimated REAL,
+    confirmation_status TEXT NOT NULL DEFAULT 'pending',
+    confirmed_by TEXT,
+    confirmed_at TEXT,
+    FOREIGN KEY (fact_id) REFERENCES fact_records(id)
+);
+
+CREATE TABLE IF NOT EXISTS workout_records (
+    fact_id TEXT PRIMARY KEY,
+    duration_minutes REAL,
+    calories_burned_estimated REAL,
+    calories_burned_confirmed REAL,
+    confirmation_status TEXT NOT NULL DEFAULT 'pending',
+    confirmed_by TEXT,
+    confirmed_at TEXT,
+    FOREIGN KEY (fact_id) REFERENCES fact_records(id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
