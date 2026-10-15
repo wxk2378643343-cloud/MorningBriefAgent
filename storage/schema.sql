@@ -203,6 +203,17 @@ CREATE TABLE IF NOT EXISTS onboarding_steps (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS workflow_runs (
+    id TEXT PRIMARY KEY,
+    workflow_key TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    finished_at TEXT,
+    exit_code INTEGER,
+    log_path TEXT,
+    error_message TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
