@@ -22,6 +22,7 @@ def process_message(
     ask_agent: Callable[[str, str, str], str],
     record_fact: Callable[..., str] | None = None,
     estimate_meal: Callable[..., Any] | None = None,
+    confirm_lifestyle: Callable[..., str | None] | None = None,
     animate: Callable[[str, threading.Event], None],
     stop_animation: Callable[..., None],
     event_fn: Callable[..., None],
@@ -43,6 +44,14 @@ def process_message(
                 title="📋 待办事项实时处理", template="indigo",
             )
             return
+        if confirm_lifestyle:
+            confirmation = confirm_lifestyle(user_text, actor=sender_open_id)
+            if confirmation:
+                reply(
+                    msg_id, confirmation,
+                    title="🥗 饮食记录确认", template="green",
+                )
+                return
 
         attached_images = get_images(sender_open_id)
         archive_result = None
@@ -55,6 +64,7 @@ def process_message(
                 "lifestyle_archive_failed message_id=%s error=%s",
                 msg_id, archive_error, exc_info=True,
             )
+        estimate_result = None
         if archive_result:
             logger.info(
                 "lifestyle_archive_%s message_id=%s",
@@ -80,7 +90,7 @@ def process_message(
                     image_paths=archive_result.get("image_paths", []),
                 )
             if fact_id and estimate_meal:
-                estimate_meal(
+                estimate_result = estimate_meal(
                     fact_id=fact_id,
                     category=archive_result["category"],
                     text=user_text,
@@ -119,6 +129,21 @@ def process_message(
 
         logger.info("agent_started message_id=%s", msg_id)
         reply_text = ask_agent(sender_open_id, user_text, context)
+        if estimate_result and estimate_result.get("status") == "pending":
+            calories = estimate_result.get("calories_estimated")
+            protein = estimate_result.get("protein_estimated")
+            calories_text = (
+                f"{calories:g}" if isinstance(calories, (int, float))
+                else "未能估算"
+            )
+            reply_text = (
+                f"🥗 **本次餐食待确认估算**：约 {calories_text} kcal"
+                + (f"，蛋白质约 {protein:g} g" if protein is not None else "")
+                + "。\n\n"
+                "当前状态：pending，尚未计入正式统计。\n"
+                "如确认无误，请回复：`确认热量 数值`。\n\n"
+                + reply_text
+            )
         stop_animation(animation_stop, animation_thread)
         animation_stop = None
         animation_thread = None

@@ -85,3 +85,23 @@ def get_meal(fact_id: str, *, database_path: str | None = None) -> dict[str, Any
             (fact_id,),
         ).fetchone()
     return dict(row) if row else None
+
+
+def get_latest_pending_meal(
+    *,
+    database_path: str | None = None,
+) -> dict[str, Any] | None:
+    initialize(database_path)
+    with connect(database_path) as connection:
+        row = connection.execute(
+            """
+            SELECT f.id AS fact_id, f.recorded_at, m.calories_estimated,
+                   m.protein_estimated
+            FROM fact_records f
+            JOIN meal_records m ON m.fact_id = f.id
+            WHERE m.confirmation_status = 'pending'
+            ORDER BY f.recorded_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
+    return dict(row) if row else None

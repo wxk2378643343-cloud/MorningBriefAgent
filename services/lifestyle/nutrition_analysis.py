@@ -3,11 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Callable
 
 from core.agent import context as agent_context
 from core.agent import provider as agent_provider
-from storage.lifestyle import save_meal_estimate
+from storage.lifestyle import (
+    confirm_meal,
+    get_latest_pending_meal,
+    save_meal_estimate,
+)
 
 
 MEAL_CATEGORIES = frozenset({"早餐", "午餐", "晚餐", "加餐"})
@@ -83,3 +88,33 @@ def estimate_meal(
         "confidence": confidence,
         "basis": str(result.get("basis", "")).strip(),
     }
+
+
+def handle_confirmation(
+    text: str,
+    *,
+    actor: str,
+    database_path: str | None = None,
+) -> str | None:
+    """Handle an explicit user confirmation for the latest pending meal."""
+    match = re.search(
+        r"确认(?:热量|卡路里)\s*[:：]?\s*(\d+(?:\.\d+)?)",
+        text or "",
+    )
+    if not match:
+        return None
+    calories = float(match.group(1))
+    pending = get_latest_pending_meal(database_path=database_path)
+    if not pending:
+        return "目前没有待确认的餐食热量记录。"
+    if not confirm_meal(
+        pending["fact_id"],
+        calories=calories,
+        actor=actor,
+        database_path=database_path,
+    ):
+        return "热量确认失败，请稍后重试。"
+    return (
+        f"✅ 已确认本次餐食热量：{calories:g} kcal。\n"
+        "该数值已进入正式统计。"
+    )
