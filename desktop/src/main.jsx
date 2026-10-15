@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { apiUrl, probeLocalApi } from "./localApi";
+import { open } from "@tauri-apps/plugin-dialog";
 
 const demoDiscovery = {
   providers: [
@@ -281,7 +282,13 @@ function WorkspaceStep({ onComplete }) {
       onComplete();
     } catch { setBusy(false); }
   };
-  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>选择一个本地目录，应用会创建数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="例如：D:\\MorningBriefWorkspace" /><span className="secondary">请填写目录</span></div><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div></div>;
+  const chooseDirectory = async () => {
+    try {
+      const selected = await open({ directory: true, multiple: false, title: "选择 MorningBrief 工作区" });
+      if (typeof selected === "string") setRoot(selected);
+    } catch { /* Browser preview keeps the manual path field available. */ }
+  };
+  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>选择一个本地目录，应用会创建数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div></div>;
 }
 function ProviderStep({ providers, selected, onSelect, onComplete }) {
   const [apiKey, setApiKey] = useState("");

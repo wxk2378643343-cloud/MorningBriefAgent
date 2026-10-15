@@ -47,6 +47,23 @@ class DesktopWorkspaceTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_provider_and_channel_tests_only_report_credential_presence(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with patch("core.application.local_api.get_secret", side_effect=lambda name: "configured" if any(token in name for token in ("app_id", "app_secret", "api_key")) else None):
+                    self.assertTrue(self._post(base + "/api/v1/providers/deepseek/test", {})["ok"])
+                    self.assertTrue(self._post(base + "/api/v1/channels/feishu/test", {})["ok"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
     @staticmethod
     def _post(url, payload):
         request = Request(
