@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from core.agent.discovery import discovery_snapshot
+from storage.data_sources import list_files, list_sources
 from storage.onboarding import complete_step, get_status
 
 
@@ -20,6 +21,18 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(get_status(self.server.database_path))
         elif self.path == "/api/v1/providers/discovery":
             self._send_json(discovery_snapshot())
+        elif self.path == "/api/v1/data-sources":
+            self._send_json({"sources": list_sources(database_path=self.server.database_path)})
+        elif self.path.startswith("/api/v1/files"):
+            source_id = self._query_value("source_id")
+            if not source_id:
+                self._send_json({"error": "source_id_required"}, HTTPStatus.BAD_REQUEST)
+            else:
+                self._send_json({
+                    "files": list_files(
+                        source_id, database_path=self.server.database_path
+                    )
+                })
         else:
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
 
@@ -53,6 +66,12 @@ class _Handler(BaseHTTPRequestHandler):
         if not isinstance(payload, dict):
             raise TypeError("JSON object required")
         return payload
+
+    def _query_value(self, name: str) -> str | None:
+        from urllib.parse import parse_qs, urlparse
+
+        values = parse_qs(urlparse(self.path).query).get(name, [])
+        return values[0] if values else None
 
     def _send_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
