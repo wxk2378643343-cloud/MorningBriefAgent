@@ -100,6 +100,10 @@ function App() {
       const nextStatus = await response.json();
       setStatus(nextStatus);
       setSetupStep(null);
+      if (setupMode && nextStatus.complete) {
+        setSetupMode(false);
+        setActiveSection("工作台");
+      }
       if (stepKey === "workspace") {
         setWorkspace(await fetch(apiUrl("/api/v1/workspace")).then((item) => item.json()));
       }
@@ -120,7 +124,7 @@ function App() {
       const response = await fetch(apiUrl("/api/v1/onboarding/complete"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step_key: item.step_key, detail: "skipped; can be configured later" }),
+        body: JSON.stringify({ step_key: item.step_key, skipped: true, detail: "skipped; can be configured later" }),
       });
       if (response.ok) nextStatus = await response.json();
     }
@@ -138,6 +142,7 @@ function App() {
         serviceLabel={serviceLabel}
         serviceState={serviceState}
         status={status}
+        workspace={workspace}
         currentStep={setupStep ?? currentStep}
         currentIndex={currentIndex}
         discovery={discovery}
@@ -151,6 +156,7 @@ function App() {
           setSetupStep(ONBOARDING_STEPS[Math.max(0, index - 1)].key);
         }}
         onSkip={currentStep === "workspace" ? null : skipRemainingSetup}
+        onCancel={() => { setSetupMode(false); setSetupStep(null); setActiveSection("工作台"); }}
         message={message}
       />
     );
@@ -173,7 +179,7 @@ function App() {
       </aside>
       <main className="main">
         <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header>
-        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage onReconfigure={async () => { await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" }); setSetupMode(true); setActiveSection("工作台"); }} /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
+        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage onOpenSetup={(stepKey) => { setSetupStep(stepKey); setSetupMode(true); }} onReconfigure={async () => { await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" }); setSetupStep(null); setSetupMode(true); setActiveSection("工作台"); }} /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
           <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
           <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
         </section></>}
@@ -201,8 +207,19 @@ function SectionPlaceholder({ section }) {
   };
   return <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25} /></div><span className="eyebrow">Preview</span><h2>{section}</h2><p>{descriptions[section]}</p><button className="primary" type="button" onClick={() => window.location.reload()}>返回工作台</button></section>;
 }
-function SettingsPage({ onReconfigure }) {
-  return <section className="placeholder-page"><div className="placeholder-icon"><Settings2 size={25} /></div><span className="eyebrow">Local settings</span><h2>设置</h2><p>所有配置只保存在本机。重新配置不会删除工作区文件，只会重新打开首次启动向导。</p><button className="primary" type="button" onClick={onReconfigure}>重新配置本地工作区</button></section>;
+function SettingsPage({ onOpenSetup, onReconfigure }) {
+  return (
+    <section className="settings-page">
+      <div className="page-heading"><div><span className="eyebrow">LOCAL SETTINGS</span><h2>设置</h2><p>可以单独修改任意一步，不会删除本地工作区文件。</p></div></div>
+      <div className="settings-grid">
+        {ONBOARDING_STEPS.map((step) => {
+          const Icon = step.icon;
+          return <button type="button" className="settings-card" key={step.key} onClick={() => onOpenSetup(step.key)}><span className="settings-icon"><Icon size={18} /></span><span><strong>{step.label}</strong><small>打开并修改此配置</small></span><ChevronRight size={16} /></button>;
+        })}
+      </div>
+      <div className="settings-danger-zone"><p>需要重新开始完整配置时，向导会保留文件，只重置配置进度。</p><button className="secondary" type="button" onClick={onReconfigure}>重新开始四步配置</button></div>
+    </section>
+  );
 }
 function AgentRuntime({ serviceState }) {
   const [status, setStatus] = useState({ latest: null, recent: [], sync: { pending: 0, failed: 0 } });

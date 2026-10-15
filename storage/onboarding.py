@@ -32,15 +32,17 @@ def get_status(database_path: str | Path | None = None) -> dict[str, Any]:
         for key in ONBOARDING_STEPS
     ]
     completed = sum(item["status"] == "completed" for item in steps)
+    skipped = sum(item["status"] == "skipped" for item in steps)
     current = next(
-        (item["step_key"] for item in steps if item["status"] != "completed"),
+        (item["step_key"] for item in steps if item["status"] not in {"completed", "skipped"}),
         None,
     )
     return {
         "steps": steps,
         "completed_count": completed,
+        "skipped_count": skipped,
         "total_count": len(steps),
-        "complete": completed == len(steps),
+        "complete": completed + skipped == len(steps),
         "current_step": current,
     }
 
@@ -64,6 +66,31 @@ def complete_step(
               status='completed',
               detail=excluded.detail,
               completed_at=CURRENT_TIMESTAMP,
+              updated_at=CURRENT_TIMESTAMP
+            """,
+            (step_key, detail),
+        )
+
+
+def skip_step(
+    step_key: str,
+    *,
+    detail: str | None = None,
+    database_path: str | Path | None = None,
+) -> None:
+    if step_key not in ONBOARDING_STEPS:
+        raise ValueError(f"Unknown onboarding step: {step_key}")
+    initialize(database_path)
+    with connect(database_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO onboarding_steps
+              (step_key, status, detail, completed_at)
+            VALUES (?, 'skipped', ?, NULL)
+            ON CONFLICT(step_key) DO UPDATE SET
+              status='skipped',
+              detail=excluded.detail,
+              completed_at=NULL,
               updated_at=CURRENT_TIMESTAMP
             """,
             (step_key, detail),

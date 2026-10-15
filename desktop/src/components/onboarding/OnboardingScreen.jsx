@@ -39,6 +39,7 @@ export function SetupScreen({
   serviceLabel,
   serviceState,
   status,
+  workspace,
   currentStep,
   currentIndex,
   discovery,
@@ -49,6 +50,7 @@ export function SetupScreen({
   completeStep,
   onBack,
   onSkip,
+  onCancel,
   message,
 }) {
   return (
@@ -60,10 +62,10 @@ export function SetupScreen({
       <main className="setup-main">
         <div className="setup-intro"><span className="eyebrow">FIRST RUN</span><h1>先配置本地工作区</h1><p>选择你的本地文件位置，再配置 AI 和飞书。完成后才进入工作台。</p></div>
         <section className="setup-card">
-          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 完成</span></div>
+          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 已配置{status?.skipped_count ? ` · ${status.skipped_count} 项稍后配置` : ""}</span></div>
           <div className="stepper">{ONBOARDING_STEPS.map((step, index) => { const Icon = step.icon; const done = index < currentIndex; const active = index === currentIndex; return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`} key={step.key}><div className="step-icon">{done ? <Check size={15} /> : <Icon size={16} />}</div><span>{step.label}</span>{index < ONBOARDING_STEPS.length - 1 && <ChevronRight className="step-arrow" size={15} />}</div>; })}</div>
           <div className="setup-content">
-            {currentStep === "workspace" && <WorkspaceStep onComplete={() => completeStep("workspace", "local workspace initialized")} />}
+            {currentStep === "workspace" && <WorkspaceStep initialRoot={workspace?.root_path ?? ""} onComplete={() => completeStep("workspace", "local workspace initialized")} />}
             {currentStep === "provider" && <ProviderStep providers={discovery.providers} selected={selectedProvider} onSelect={setSelectedProvider} onComplete={() => completeStep("provider", selectedProvider)} />}
             {currentStep === "channel" && <ChannelStep channels={discovery.channels} selected={selectedChannel} onSelect={setSelectedChannel} onComplete={() => completeStep("channel", selectedChannel)} />}
             {currentStep === "profile" && <ProfileStep onComplete={() => completeStep("profile", "profile ready")} />}
@@ -71,6 +73,7 @@ export function SetupScreen({
           <div className="setup-footer">
             <button className="secondary" type="button" onClick={onBack} disabled={currentIndex === 0}><span>←</span>上一步</button>
             {onSkip && <button className="text-button" type="button" onClick={onSkip}>稍后配置</button>}
+            <button className="text-button setup-cancel" type="button" onClick={onCancel}>取消</button>
           </div>
           {message && <div className="setup-message">{message}</div>}
         </section>
@@ -79,8 +82,8 @@ export function SetupScreen({
   );
 }
 
-function WorkspaceStep({ onComplete }) {
-  const [root, setRoot] = useState("");
+function WorkspaceStep({ initialRoot, onComplete }) {
+  const [root, setRoot] = useState(initialRoot);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async () => {
