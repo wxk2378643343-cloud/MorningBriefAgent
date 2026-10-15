@@ -22,7 +22,7 @@ from storage.data_sources import (
     register_source,
     scan_source,
 )
-from storage.onboarding import complete_step, get_status, reset_all
+from storage.onboarding import complete_step, get_status, reset_all, skip_step
 from storage.workspace import initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
 from core.runtime.config import PROJECT_ROOT
@@ -284,7 +284,8 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json()
             step_key = str(payload.get("step_key", "")).strip()
             detail = payload.get("detail")
-            complete_step(
+            operation = skip_step if payload.get("skipped") else complete_step
+            operation(
                 step_key,
                 detail=str(detail) if detail is not None else None,
                 database_path=self.server.database_path,

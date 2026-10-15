@@ -4,7 +4,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from storage.onboarding import complete_step, get_status, reset_step
+from storage.onboarding import complete_step, get_status, reset_step, skip_step
 from storage.sqlite import connect, initialize
 
 
@@ -29,6 +29,17 @@ class OnboardingStateTests(unittest.TestCase):
         with self._database() as database:
             with self.assertRaises(ValueError):
                 complete_step("secrets", database_path=database)
+
+    def test_skipped_optional_steps_are_not_counted_as_configured(self):
+        with self._database() as database:
+            complete_step("workspace", detail="initialized", database_path=database)
+            skip_step("provider", detail="later", database_path=database)
+            skip_step("channel", detail="later", database_path=database)
+            skip_step("profile", detail="later", database_path=database)
+            status = get_status(database)
+            self.assertTrue(status["complete"])
+            self.assertEqual(status["completed_count"], 1)
+            self.assertEqual(status["skipped_count"], 3)
 
     def _database(self):
         temp_dir = tempfile.TemporaryDirectory()
