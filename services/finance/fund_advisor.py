@@ -36,7 +36,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(_
 from core.runtime import config
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.idempotency import make_key
-from storage.market import save_fund_snapshot
+from storage.market import save_fund_position, save_fund_snapshot
 
 BENCHMARK_SYMBOLS = ["sh000001", "sz399006", "hkHSI"]
 
@@ -131,6 +131,33 @@ def persist_quote_snapshots(
             logger.warning("保存行情快照失败 symbol=%s error=%s", symbol, exc)
 
 
+def persist_portfolio_positions(
+    portfolio: List[Dict[str, Any]],
+    *,
+    recorded_at: datetime.datetime | None = None,
+) -> None:
+    """Persist the private portfolio input as a dated, repeat-safe snapshot."""
+    recorded_at = recorded_at or datetime.datetime.now(datetime.timezone.utc)
+    source_id = f"portfolio:{config.PORTFOLIO_FILE}"
+    for item in portfolio:
+        code = str(item.get("code", "")).strip()
+        if not code:
+            continue
+        try:
+            shares = item.get("shares")
+            cost_price = item.get("cost_price")
+            save_fund_position(
+                fund_code=code,
+                fund_name=str(item.get("name", "")),
+                shares=float(shares) if shares is not None else None,
+                cost_price=float(cost_price) if cost_price is not None else None,
+                source_id=source_id,
+                recorded_at=recorded_at.isoformat(timespec="seconds"),
+            )
+        except (TypeError, ValueError) as exc:
+            logger.warning("保存持仓失败 fund_code=%s error=%s", code, exc)
+
+
 def _trading_days_until(target_date: str) -> int:
     try:
         end = datetime.datetime.strptime(target_date, "%Y-%m-%d").date()
@@ -158,6 +185,7 @@ def generate_advisor_report() -> str:
             "填写本地数据后重试。该文件已被 Git 忽略。"
         )
 
+    persist_portfolio_positions(portfolio)
     quotes = fetch_realtime_quotes(_symbols(config_data))
     persist_quote_snapshots(quotes)
     total_cost = sum(float(item.get("cost_value", 0)) for item in portfolio)

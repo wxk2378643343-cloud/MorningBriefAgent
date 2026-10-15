@@ -1,4 +1,4 @@
-"""Repositories for fund market observations and news source records."""
+"""Repositories for fund positions, market observations, and news records."""
 
 from __future__ import annotations
 
@@ -44,6 +44,43 @@ def save_fund_snapshot(
             ),
         )
         return int(cursor.lastrowid)
+
+
+def save_fund_position(
+    *,
+    fund_code: str,
+    fund_name: str = "",
+    shares: float | None = None,
+    cost_price: float | None = None,
+    source_id: str,
+    recorded_at: str,
+    database_path: str | None = None,
+) -> str:
+    """Persist one dated private holding snapshot idempotently."""
+    initialize(database_path)
+    position_id = "fund-position:" + hashlib.sha256(
+        f"{fund_code}|{recorded_at[:10]}".encode("utf-8")
+    ).hexdigest()[:24]
+    with connect(database_path) as connection:
+        _ensure_source(connection, source_id)
+        connection.execute(
+            """
+            INSERT INTO fund_records
+              (id, fund_code, fund_name, shares, cost_price, source_id, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              fund_name=excluded.fund_name,
+              shares=excluded.shares,
+              cost_price=excluded.cost_price,
+              source_id=excluded.source_id,
+              recorded_at=excluded.recorded_at
+            """,
+            (
+                position_id, fund_code, fund_name, shares, cost_price,
+                source_id, recorded_at,
+            ),
+        )
+    return position_id
 
 
 def save_news_item(
