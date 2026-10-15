@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from core.agent.discovery import discovery_snapshot
-from storage.data_sources import list_files, list_sources
+from storage.data_sources import list_files, list_sources, read_file_preview
 from storage.onboarding import complete_step, get_status
 
 
@@ -25,8 +25,24 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"sources": list_sources(database_path=self.server.database_path)})
         elif self.path.startswith("/api/v1/files"):
             source_id = self._query_value("source_id")
+            relative_path = self._query_value("path")
             if not source_id:
                 self._send_json({"error": "source_id_required"}, HTTPStatus.BAD_REQUEST)
+            elif relative_path:
+                try:
+                    self._send_json({
+                        "file": read_file_preview(
+                            source_id,
+                            relative_path,
+                            database_path=self.server.database_path,
+                        )
+                    })
+                except (KeyError, FileNotFoundError):
+                    self._send_json({"error": "file_not_found"}, HTTPStatus.NOT_FOUND)
+                except ValueError as exc:
+                    self._send_json(
+                        {"error": str(exc)}, HTTPStatus.BAD_REQUEST
+                    )
             else:
                 self._send_json({
                     "files": list_files(

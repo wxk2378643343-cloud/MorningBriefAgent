@@ -34,8 +34,12 @@ class LocalFileApiTests(unittest.TestCase):
                 base = f"http://127.0.0.1:{server.server_port}"
                 sources = self._get(f"{base}/api/v1/data-sources")
                 files = self._get(f"{base}/api/v1/files?source_id={source_id}")
+                preview = self._get(
+                    f"{base}/api/v1/files?source_id={source_id}&path=brief.md"
+                )
                 self.assertEqual(sources["sources"][0]["name"], "Vault")
                 self.assertEqual(files["files"][0]["relative_path"], "brief.md")
+                self.assertEqual(preview["file"]["content"], "# Brief")
             finally:
                 server.shutdown()
                 server.server_close()
