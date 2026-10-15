@@ -26,6 +26,9 @@ button { cursor: pointer; }
 h1, h2, h3, h4, p { margin-top: 0; }
 .topbar h1 { margin: 7px 0 0; color: #182236; font-size: 24px; letter-spacing: -.04em; }
 .connection { color: #7d889a; padding-top: 9px; font-size: 12px; }
+.connection-ready { color: #16734b; }
+.connection-offline { color: #a15b1c; }
+.connection-starting, .connection-stopping { color: #6b63a8; }
 .hero { display: flex; align-items: center; justify-content: space-between; min-height: 260px; padding: 34px 40px; margin-bottom: 22px; border: 1px solid #e1e5ee; border-radius: 16px; background: linear-gradient(120deg, #fff 0%, #f3f5ff 100%); box-shadow: 0 10px 30px rgba(36,48,76,.06); overflow: hidden; }
 .hero-kicker { display: inline-flex; gap: 7px; align-items: center; padding: 7px 10px; border: 1px solid #dce1ff; border-radius: 7px; color: #5864c4; background: #f2f3ff; font-size: 11px; }
 h2 { margin: 17px 0 12px; color: #172033; font-size: 32px; line-height: 1.18; letter-spacing: -.05em; }

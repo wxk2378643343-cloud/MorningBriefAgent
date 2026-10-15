@@ -15,6 +15,7 @@ import {
   Workflow,
 } from "lucide-react";
 import "./styles.css";
+import { apiUrl, probeLocalApi } from "./localApi";
 
 const demoDiscovery = {
   providers: [
@@ -36,6 +37,7 @@ const steps = [
 
 function App() {
   const [activeSection, setActiveSection] = useState("工作台");
+  const [serviceState, setServiceState] = useState("starting");
   const [status, setStatus] = useState(null);
   const [discovery, setDiscovery] = useState(demoDiscovery);
   const [selectedProvider, setSelectedProvider] = useState("deepseek");
@@ -43,9 +45,28 @@ function App() {
   const [message, setMessage] = useState("正在检查本地环境…");
 
   useEffect(() => {
+    let cancelled = false;
+    const checkService = async () => {
+      try {
+        await probeLocalApi();
+        if (!cancelled) setServiceState("ready");
+      } catch {
+        if (!cancelled) setServiceState("offline");
+      }
+    };
+    checkService();
+    const timer = window.setInterval(checkService, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      setServiceState("stopping");
+    };
+  }, []);
+
+  useEffect(() => {
     Promise.all([
-      fetch("http://127.0.0.1:8765/api/v1/onboarding/status").then((response) => response.json()),
-      fetch("http://127.0.0.1:8765/api/v1/providers/discovery").then((response) => response.json()),
+      fetch(apiUrl("/api/v1/onboarding/status")).then((response) => response.json()),
+      fetch(apiUrl("/api/v1/providers/discovery")).then((response) => response.json()),
     ])
       .then(([nextStatus, nextDiscovery]) => {
         setStatus(nextStatus);
@@ -58,6 +79,12 @@ function App() {
   }, []);
 
   const currentStep = status?.current_step ?? "workspace";
+  const serviceLabel = {
+    starting: "本地服务启动中",
+    ready: "本地服务已连接",
+    offline: "演示模式：本地服务未连接",
+    stopping: "本地服务正在停止",
+  }[serviceState];
   const currentIndex = Math.max(0, steps.findIndex((step) => step.key === currentStep));
   const completeStep = async (stepKey, detail) => {
     try {
@@ -94,8 +121,8 @@ function App() {
         <div className="sidebar-bottom"><NavItem icon={<Settings2 size={17} />} label="设置" /><div className="local-only"><span /> 仅在本机运行</div></div>
       </aside>
       <main className="main">
-        <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className="connection"><span className="pulse" />{message}</div></header>
-        {activeSection === "文件与数据" ? <FileWorkspace /> : activeSection === "数据库" ? <DatabaseWorkspace /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><section className="hero">
+        <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header>
+        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "数据库" ? <DatabaseWorkspace serviceState={serviceState} /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><section className="hero">
           <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
           <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
         </section>
@@ -124,7 +151,7 @@ function SectionPlaceholder({ section }) {
   };
   return <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25} /></div><span className="eyebrow">Preview</span><h2>{section}</h2><p>{descriptions[section]}</p><button className="primary" type="button" onClick={() => window.location.reload()}>返回工作台</button></section>;
 }
-function FileWorkspace() {
+function FileWorkspace({ serviceState }) {
   const demoFiles = [
     ["2026-10-15-晨间简报.md", "Markdown", "知识库 / briefings", "今天 07:45"],
     ["app.sqlite3", "SQLite", "data / database", "今天 09:12"],
@@ -140,11 +167,11 @@ function FileWorkspace() {
 
   const loadFiles = async () => {
     try {
-      const sourcesResponse = await fetch("http://127.0.0.1:8765/api/v1/data-sources");
+      const sourcesResponse = await fetch(apiUrl("/api/v1/data-sources"));
       const sourcesPayload = await sourcesResponse.json();
       const nextSource = sourcesPayload.sources?.[0];
       if (!nextSource) throw new Error("no source");
-      const filesResponse = await fetch(`http://127.0.0.1:8765/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}`);
+      const filesResponse = await fetch(apiUrl(`/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}`));
       const filesPayload = await filesResponse.json();
       const nextFiles = (filesPayload.files ?? []).map((file) => [
         file.file_name,
@@ -171,14 +198,14 @@ function FileWorkspace() {
       setPreview(null);
       return;
     }
-    fetch(`http://127.0.0.1:8765/api/v1/files?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(file[4] || file[2])}`)
+    fetch(apiUrl(`/api/v1/files?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(file[4] || file[2])}`))
       .then((response) => response.json())
       .then((payload) => setPreview(payload.file?.content ?? null))
       .catch(() => setPreview(null));
   }, [source, selected, files]);
 
   const selectedFile = files.find(([name]) => name === selected);
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Local data</span><h2>文件与数据</h2><p>查看本地文件、数据库、Agent 记录和附件，不复制原始数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button><button type="button" className="primary"><FolderOpen size={15} />添加目录</button></div></div><div className="file-layout"><aside className="file-tree"><strong>数据源</strong><button className="tree-selected"><FolderOpen size={15} />{source?.name ?? "全部数据"}</button><button><FolderOpen size={15} />知识库</button><button><Database size={15} />数据库</button><button><MessageSquare size={15} />Agent 对话</button><button><Workflow size={15} />运行日志</button><div className="tree-note"><span className="pulse" /> {live ? "本地索引已连接" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected || "未选择文件"}</h3><p>这里会显示受大小限制的只读预览。原始文件仍然保存在你配置的本地目录中。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong># 今日晨间简报</strong><br /><br /><span>本地预览已准备就绪。启动本地 API 后会显示真实内容。</span></> : <span>此文件类型将使用专用查看器打开：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>本地文件系统</strong></div><button type="button" className="secondary">打开原文件</button></aside></div></section>;
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Local data</span><h2>文件与数据</h2><p>查看本地文件、数据库、Agent 记录和附件，不复制原始数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button><button type="button" className="primary"><FolderOpen size={15} />添加目录</button></div></div><div className="file-layout"><aside className="file-tree"><strong>数据源</strong><button className="tree-selected"><FolderOpen size={15} />{source?.name ?? "全部数据"}</button><button><FolderOpen size={15} />知识库</button><button><Database size={15} />数据库</button><button><MessageSquare size={15} />Agent 对话</button><button><Workflow size={15} />运行日志</button><div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "本地索引已连接" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected || "未选择文件"}</h3><p>这里会显示受大小限制的只读预览。原始文件仍然保存在你配置的本地目录中。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong># 今日晨间简报</strong><br /><br /><span>本地预览已准备就绪。启动本地 API 后会显示真实内容。</span></> : <span>此文件类型将使用专用查看器打开：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>本地文件系统</strong></div><button type="button" className="secondary">打开原文件</button></aside></div></section>;
 }
 function FileGlyph({ type }) {
   if (type === "SQLite") return <Database size={17} />;
