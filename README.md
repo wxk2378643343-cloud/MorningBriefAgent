@@ -434,7 +434,7 @@ Start-Process -WindowStyle Hidden `
 
 ## Windows 计划任务
 
-本项目的定时机制本质上是 Windows 任务计划程序（Task Scheduler），不是 Agent 自己常驻计时。Windows 负责在指定时间启动 Python，业务服务再按需调用 Agent。
+在 Windows 环境中，可以使用任务计划程序（Task Scheduler）定时启动项目中的业务工作流，让 Agent 自动完成周期性的资料读取、分析、同步与归档，更充分地发挥 Agent 的持续协作能力。
 
 ```text
 Windows Task Scheduler
@@ -444,79 +444,7 @@ python main.py brief / todo-morning / news / ...
 读取本地数据 → Agent 分析 → 飞书同步 / 本地归档
 ```
 
-Agent 不作为独立任务运行，避免重复读取上下文和重复生成计划。晨报、待办、新闻、聊天复盘和股票/基金评估等业务任务，会在自己的流程中调用同一个 Agent 边界。
-
-项目提供一个不依赖 `.bat` 的注册脚本，会把业务工作流和可靠性对账注册为 Windows 任务。
-
-首次配置或迁移到新机器时，先安装依赖并激活虚拟环境，然后在项目根目录执行：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\register_windows_tasks.ps1
-```
-
-注册脚本会使用当前激活的 Python 创建或更新下面的任务；登录时启动的机器人使用同一解释器目录下的 `pythonw.exe`，避免登录时闪现控制台窗口。若该目录缺少 `pythonw.exe`，脚本会停止并提示修复 Python 环境，而不会切换到其他 Python 安装。它不会上传任务配置，也不会把 `.env` 内容写入任务参数。
-
-默认任务如下：
-
-| 任务 | 时间/触发方式 | 作用 |
-| --- | --- | --- |
-| `DailyTodoMorningPush` | 每日 06:00 | Agent 生成并同步早间待办与日程 |
-| `KaoyanMorningBrief` | 每日 06:30 | 生成晨间知识库简报 |
-| `MorningChatDigest` | 每日 07:00 | 分析本地聊天并生成摘要 |
-| `MorningGlobalNews` | 每日 07:45 | 抓取并总结新闻 |
-| `FundDailyAdvisor1400` | 每日 14:00 | 股票/基金市场两点评估与摘要 |
-| `DailyTodoEveningReview` | 每日 23:00 | 晚间复盘与归档 |
-| `MorningBriefAgentBot` | 用户登录时 | 启动飞书 WebSocket 机器人 |
-| `MorningBriefAgentReconcile` | 每 15 分钟 | 重放到期的 Outbox 记录 |
-
-如果不使用某项本地数据，只需在 `.env` 中取消对应目录配置；任务仍可安全跳过该能力并记录诊断信息。
-
-查看任务状态和下次运行时间：
-
-```powershell
-$names = @(
-  "DailyTodoMorningPush", "KaoyanMorningBrief", "MorningChatDigest",
-  "MorningGlobalNews", "FundDailyAdvisor1400",
-  "DailyTodoEveningReview", "MorningBriefAgentBot",
-  "MorningBriefAgentReconcile"
-)
-
-Get-ScheduledTask -TaskName $names | ForEach-Object {
-  $info = Get-ScheduledTaskInfo -TaskName $_.TaskName
-  [pscustomobject]@{
-    Task = $_.TaskName
-    State = $_.State
-    LastRun = $info.LastRunTime
-    LastResult = $info.LastTaskResult
-    NextRun = $info.NextRunTime
-  }
-}
-```
-
-需要手动测试某个任务时：
-
-```powershell
-Start-ScheduledTask -TaskName "DailyTodoMorningPush"
-```
-
-测试前请确认本地配置和飞书权限，因为待办、新闻、基金评估等任务可能会产生外部卡片或本地文件。停止或删除任务：
-
-```powershell
-Disable-ScheduledTask -TaskName "MorningBriefAgentBot"
-Unregister-ScheduledTask -TaskName "MorningBriefAgentReconcile" -Confirm:$false
-```
-
-重新运行注册脚本可以恢复或更新配置。计划任务属于本机状态，不会随 Git 仓库同步；仓库只提供可重复执行的注册脚本。
-
-手动创建任务时建议：
-
-1. 使用当前仓库的绝对路径作为“起始于”目录；
-2. 使用虚拟环境中的 Python；
-3. 勾选“仅在用户登录时运行”开始调试；
-4. 先手动运行一次并检查 `logs/`；
-5. 不要把 `.env` 内容写入任务参数或日志。
+具体执行时间、启用哪些工作流以及任务名称都属于使用者的本机部署配置，不随 Git 仓库同步，可根据实际需要自行设置。
 
 ## 目录结构
 
