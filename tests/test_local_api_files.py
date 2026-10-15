@@ -12,6 +12,21 @@ from storage.sqlite import connect, initialize
 
 
 class LocalFileApiTests(unittest.TestCase):
+    def test_health_endpoint_is_local_service_probe(self):
+        server = create_local_server()
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            payload = self._get(
+                f"http://127.0.0.1:{server.server_port}/api/v1/health"
+            )
+            self.assertEqual(payload["status"], "ok")
+            self.assertEqual(payload["service"], "morningbrief-local-api")
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(timeout=2)
+
     def test_sources_and_files_are_readable_as_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir) / "vault"
