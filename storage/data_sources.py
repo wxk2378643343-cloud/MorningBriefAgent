@@ -163,6 +163,43 @@ def list_files(
     return [dict(row) for row in rows]
 
 
+def read_file_preview(
+    source_id: str,
+    relative_path: str,
+    *,
+    max_bytes: int = 128 * 1024,
+    database_path: str | os.PathLike[str] | None = None,
+) -> dict[str, object]:
+    """Read a bounded text preview from a registered source."""
+    initialize(database_path)
+    with connect(database_path) as connection:
+        source = connection.execute(
+            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
+            (source_id,),
+        ).fetchone()
+    if source is None:
+        raise KeyError(f"Unknown data source: {source_id}")
+    root = Path(str(source["root_path"])).resolve()
+    target = (root / relative_path).resolve()
+    if root != target and root not in target.parents:
+        raise ValueError("Path escapes data source root")
+    if not target.is_file():
+        raise FileNotFoundError(relative_path)
+    if target.stat().st_size > max_bytes:
+        raise ValueError("file_too_large_for_preview")
+    try:
+        content = target.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("binary_file_not_supported") from exc
+    return {
+        "relative_path": target.relative_to(root).as_posix(),
+        "file_name": target.name,
+        "file_type": _file_type(target),
+        "content": content,
+        "size_bytes": target.stat().st_size,
+    }
+
+
 def _iter_files(root: Path, *, include_hidden: bool) -> Iterable[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
