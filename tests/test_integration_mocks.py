@@ -667,7 +667,9 @@ class MockIntegrationTests(unittest.TestCase):
         self.assertEqual(reply_message.call_count, 1)
         self.assertEqual(update_reply.call_count, 2)
         self.assertEqual(update_reply.call_args_list[-1].args[0], "om-progress")
-        self.assertEqual(update_reply.call_args_list[-1].args[1], "最终回答")
+        final_reply = update_reply.call_args_list[-1].args[1]
+        self.assertTrue(final_reply.startswith("最终回答"))
+        self.assertIn("Token：估算输入", final_reply)
 
     def test_thinking_animation_rotates_one_card_until_stopped(self):
         class StopAfterOneFrame:
