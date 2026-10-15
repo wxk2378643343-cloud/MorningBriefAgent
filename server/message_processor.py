@@ -137,11 +137,10 @@ def process_message(
                 else "未能估算"
             )
             reply_text = (
-                f"🥗 **本次餐食待确认估算**：约 {calories_text} kcal"
+                f"🥗 **本次餐食已记录**：约 {calories_text} kcal"
                 + (f"，蛋白质约 {protein:g} g" if protein is not None else "")
                 + "。\n\n"
-                "当前状态：pending，尚未计入正式统计。\n"
-                "如确认无误，请回复：`确认热量 数值`。\n\n"
+                + "这是 Agent 根据当前输入生成的估算值；如果不准确，直接告诉我正确热量，我会修改原记录。\n\n"
                 + reply_text
             )
         stop_animation(animation_stop, animation_thread)

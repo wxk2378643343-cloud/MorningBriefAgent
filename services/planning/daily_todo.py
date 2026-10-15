@@ -424,6 +424,35 @@ def handle_todo_intent(user_text: str) -> Optional[str]:
     """
     text = user_text.strip()
 
+    # Simple, low-risk natural language scheduling: use a transparent default
+    # time instead of blocking the user on a confirmation round-trip.
+    morning_match = re.match(
+        r"^(?:明天|明日)上午(?:提醒我|安排我|帮我)?(.+)$", text
+    )
+    if morning_match:
+        title = morning_match.group(1).strip(" ：:，,。")
+        if title:
+            target_date = datetime.date.today() + datetime.timedelta(days=1)
+            plan = {
+                "date": target_date.isoformat(),
+                "todos": [title],
+                "schedule_slots": [{
+                    "name": title,
+                    "start": "09:00",
+                    "end": "10:00",
+                    "summary": title,
+                    "desc": "由飞书消息自动安排；默认使用上午 09:00–10:00。",
+                }],
+            }
+            save_staged_plan(plan)
+            task_count = sync_plan_to_feishu_tasks(plan)
+            calendar_count = sync_plan_to_calendar(plan)
+            return (
+                f"✅ 已安排明天 09:00–10:00：**{title}**。\n"
+                f"飞书任务同步 {task_count} 项，日程同步 {calendar_count} 项。"
+                "如果需要调整，直接告诉我新的时间即可。"
+            )
+
     # 1. Direct addition:
     # 1.1 Natural language patterns (e.g. 给我加一个任务xxx / 加任务: xxx / 帮我加个待办xxx)
     add_match = re.match(r"^(?:给我|帮我|麻烦)?(?:加|添加|增加|加一个|加个|加上)(?:一个)?(?:任务|待办|日程|事项)[:：\s]*(.+)$", text)
