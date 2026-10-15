@@ -214,9 +214,50 @@ function FileGlyph({ type }) {
   return <FolderOpen size={17} />;
 }
 function DatabaseWorkspace() {
-  const tables = ["agent_usage_records", "todo_records", "schedule_records", "news_items"];
-  const [selected, setSelected] = useState(tables[0]);
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Read only</span><h2>数据库</h2><p>只读查看结构化事实、Agent 用量和同步状态。</p></div><div className="file-toolbar-actions"><span className="db-badge"><Database size={14} /> app.sqlite3</span></div></div><div className="file-layout database-layout"><aside className="file-tree"><strong>数据表</strong>{tables.map((table) => <button className={selected === table ? "tree-selected" : ""} key={table} onClick={() => setSelected(table)}><Database size={14} />{table}</button>)}<div className="tree-note">只读模式<br />修改请通过业务流程完成</div></aside><div className="db-content"><div className="db-title"><div><span className="eyebrow">Table</span><h3>{selected}</h3></div><span className="row-count">最近 50 条</span></div><table><thead><tr><th>id</th><th>status</th><th>provider</th><th>created_at</th></tr></thead><tbody><tr><td>1</td><td><span className="status-dot">success</span></td><td>deepseek</td><td>2026-10-16 09:12</td></tr><tr><td>2</td><td><span className="status-dot">success</span></td><td>agy</td><td>2026-10-16 07:45</td></tr></tbody></table></div><aside className="file-detail"><span className="eyebrow">Database guard</span><h3>只读查看器</h3><p>桌面端不会直接修改业务表，避免绕过校验、幂等和同步流程。</p><div className="detail-line"><span>数据库</span><strong>本地 SQLite</strong></div><div className="detail-line"><span>当前表</span><strong>{selected}</strong></div></aside></div></section>;
+  const demoTables = ["agent_usage_records", "todo_records", "schedule_records", "news_items"];
+  const [source, setSource] = useState(null);
+  const [databaseFile, setDatabaseFile] = useState(null);
+  const [tables, setTables] = useState(demoTables);
+  const [selected, setSelected] = useState(demoTables[0]);
+  const [database, setDatabase] = useState(null);
+  const [live, setLive] = useState(false);
+
+  const loadDatabase = async () => {
+    try {
+      const sourcesPayload = await fetch(apiUrl("/api/v1/data-sources")).then((response) => response.json());
+      const nextSource = sourcesPayload.sources?.[0];
+      if (!nextSource) throw new Error("no source");
+      const filesPayload = await fetch(apiUrl(`/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}`)).then((response) => response.json());
+      const nextFile = filesPayload.files?.find((file) => file.file_type === "sqlite");
+      if (!nextFile) throw new Error("no sqlite");
+      const schema = await fetch(apiUrl(`/api/v1/sqlite?source_id=${encodeURIComponent(nextSource.id)}&path=${encodeURIComponent(nextFile.relative_path)}`)).then((response) => response.json());
+      const nextTables = schema.database?.tables ?? [];
+      setSource(nextSource);
+      setDatabaseFile(nextFile);
+      setTables(nextTables);
+      setSelected(nextTables[0] ?? "");
+      setLive(true);
+    } catch {
+      setLive(false);
+    }
+  };
+
+  useEffect(() => { loadDatabase(); }, []);
+
+  useEffect(() => {
+    if (!source || !databaseFile || !selected) return;
+    fetch(apiUrl(`/api/v1/sqlite?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(databaseFile.relative_path)}&table=${encodeURIComponent(selected)}`))
+      .then((response) => response.json())
+      .then((payload) => setDatabase(payload.database ?? null))
+      .catch(() => setDatabase(null));
+  }, [source, databaseFile, selected]);
+
+  const columns = database?.columns ?? ["id", "status", "provider", "created_at"];
+  const rows = database?.rows ?? [
+    { id: 1, status: "success", provider: "deepseek", created_at: "演示数据" },
+    { id: 2, status: "success", provider: "agy", created_at: "演示数据" },
+  ];
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Read only</span><h2>数据库</h2><p>只读查看结构化事实、Agent 用量和同步状态。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadDatabase}><RefreshCw size={15} />刷新</button><span className="db-badge"><Database size={14} /> {databaseFile?.file_name ?? "app.sqlite3"}</span></div></div><div className="file-layout database-layout"><aside className="file-tree"><strong>数据表</strong>{tables.map((table) => <button className={selected === table ? "tree-selected" : ""} key={table} onClick={() => setSelected(table)}><Database size={14} />{table}</button>)}<div className="tree-note"><span className="pulse" /> {live ? "已读取本地 SQLite" : "演示模式：未连接本地数据库"}<br />只读模式</div></aside><div className="db-content"><div className="db-title"><div><span className="eyebrow">Table</span><h3>{selected || "未选择数据表"}</h3></div><span className="row-count">最近 50 条</span></div><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{columns.map((column) => <td key={column}>{String(row[column] ?? "")}</td>)}</tr>)}</tbody></table></div><aside className="file-detail"><span className="eyebrow">Database guard</span><h3>只读查看器</h3><p>桌面端不会直接修改业务表，避免绕过校验、幂等和同步流程。</p><div className="detail-line"><span>数据库</span><strong>{databaseFile?.file_name ?? "本地 SQLite"}</strong></div><div className="detail-line"><span>当前表</span><strong>{selected || "—"}</strong></div></aside></div></section>;
 }
 function WorkspaceStep({ onComplete }) { return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>应用会在本机创建数据库、知识库、日志、附件和对话目录，不会覆盖已有文件。</p><div className="path-row"><code>用户目录 / MorningBriefAgent</code><button className="secondary">选择位置</button></div><button className="primary" onClick={onComplete}>初始化本地工作区 <ChevronRight size={16} /></button></div></div>; }
 function ProviderStep({ providers, selected, onSelect, onComplete }) { return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择你的 AI Provider</h4><p>可以使用 API，也可以使用本地 Agent 进程。密钥不会显示在界面或日志中。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div><button className="primary" onClick={onComplete}>保存 Provider 选择 <ChevronRight size={16} /></button></div></div>; }
