@@ -209,6 +209,63 @@ def read_file_preview(
     }
 
 
+def write_file_text(
+    source_id: str,
+    relative_path: str,
+    content: str,
+    *,
+    database_path: str | os.PathLike[str] | None = None,
+) -> dict[str, object]:
+    """Write a Markdown/text file inside a registered source and return its metadata."""
+    initialize(database_path)
+    with connect(database_path) as connection:
+        source = connection.execute(
+            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
+            (source_id,),
+        ).fetchone()
+    if source is None:
+        raise KeyError(f"Unknown data source: {source_id}")
+    root = Path(str(source["root_path"])).resolve()
+    target = (root / relative_path).resolve()
+    if root == target or root not in target.parents:
+        raise ValueError("Path escapes data source root")
+    if target.suffix.lower() not in {".md", ".markdown", ".txt"}:
+        raise ValueError("only_text_files_can_be_written")
+    if len(content.encode("utf-8")) > 512 * 1024:
+        raise ValueError("file_too_large")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    scan_source(source_id, database_path=database_path)
+    return read_file_preview(source_id, relative_path, database_path=database_path)
+
+
+def delete_file(
+    source_id: str,
+    relative_path: str,
+    *,
+    database_path: str | os.PathLike[str] | None = None,
+) -> None:
+    """Delete a text file inside a registered source."""
+    initialize(database_path)
+    with connect(database_path) as connection:
+        source = connection.execute(
+            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
+            (source_id,),
+        ).fetchone()
+    if source is None:
+        raise KeyError(f"Unknown data source: {source_id}")
+    root = Path(str(source["root_path"])).resolve()
+    target = (root / relative_path).resolve()
+    if root == target or root not in target.parents:
+        raise ValueError("Path escapes data source root")
+    if not target.is_file():
+        raise FileNotFoundError(relative_path)
+    if target.suffix.lower() not in {".md", ".markdown", ".txt"}:
+        raise ValueError("only_text_files_can_be_deleted")
+    target.unlink()
+    scan_source(source_id, database_path=database_path)
+
+
 def read_file_binary(
     source_id: str,
     relative_path: str,

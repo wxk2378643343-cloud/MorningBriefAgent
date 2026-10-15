@@ -40,7 +40,7 @@ const steps = [
 ];
 
 function App() {
-  const [activeSection, setActiveSection] = useState("工作台");
+  const [activeSection, setActiveSection] = useState("文件与数据");
   const [serviceState, setServiceState] = useState("starting");
   const [status, setStatus] = useState(null);
   const [discovery, setDiscovery] = useState(demoDiscovery);
@@ -127,7 +127,7 @@ function App() {
       </aside>
       <main className="main">
         <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header>
-        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><section className="hero">
+        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
           <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
           <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
         </section>
@@ -147,6 +147,15 @@ function App() {
 }
 
 function NavItem({ icon, label, active, onClick }) { return <button type="button" className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span>{icon}</span>{label}</button>; }
+function WorkbenchQuickNav({ onOpen }) {
+  const items = [
+    ["文件与数据", "查看 Demo Obsidian 文件树", FolderOpen],
+    ["工作流", "查看和运行本地工作流", Workflow],
+    ["数据库", "查看和管理业务记录", Database],
+    ["Agent 运行", "查看运行、Token 和同步状态", Bot],
+  ];
+  return <section className="quick-nav"><div><span className="eyebrow">LOCAL WORKBENCH</span><h2>你的本地 Agent 工作台</h2><p>Demo Obsidian 已作为默认本地数据源，选择一个入口开始使用。</p></div><div className="quick-nav-grid">{items.map(([label, description, Icon]) => <button type="button" className="quick-nav-card" key={label} onClick={() => onOpen(label)}><span className="quick-nav-icon"><Icon size={18} /></span><strong>{label}</strong><span>{description}</span><ChevronRight size={16} /></button>)}</div></section>;
+}
 function SectionPlaceholder({ section }) {
   const descriptions = {
     "文件与数据": "这里将查看你的 Markdown、JSON、SQLite、日志、图片和附件。当前原型先展示导航状态。",
@@ -179,6 +188,10 @@ function FileWorkspace({ serviceState }) {
   const [preview, setPreview] = useState(null);
   const [binaryPreview, setBinaryPreview] = useState(null);
   const [live, setLive] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [fileMessage, setFileMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const loadFiles = async () => {
     try {
@@ -224,13 +237,16 @@ function FileWorkspace({ serviceState }) {
     setBinaryPreview(null);
     fetch(apiUrl(`/api/v1/files?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(file[4] || file[2])}`))
       .then((response) => response.json())
-      .then((payload) => setPreview(payload.file?.content ?? null))
+      .then((payload) => { const content = payload.file?.content ?? null; setPreview(content); if (!editing) setDraft(content ?? ""); })
       .catch(() => setPreview(null));
   }, [source, selected, files]);
 
   const selectedFile = files.find(([, , , , path]) => path === selected);
   const binaryUrl = binaryPreview ? `data:${binaryPreview.content_type};base64,${binaryPreview.content_base64}` : null;
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Demo Obsidian</span><h2>文件与数据</h2><p>左侧是本地 Obsidian 文件树，右侧查看选中文件。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button></div></div><div className="file-layout"><aside className="file-tree"><strong>{source?.name ?? "Demo Obsidian"}</strong><FileTree files={files} selected={selected} onSelect={setSelected} /><div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "已连接 demo/obsidian" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time, filePath]) => <button className={`file-row ${selected === filePath ? "selected" : ""}`} key={filePath} onClick={() => setSelected(filePath)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selectedFile?.[0] || "未选择文件"}</h3><p>这里显示 demo/obsidian 中选中文件的只读内容。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selectedFile?.[0]} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selectedFile?.[0]} /> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong>{selectedFile[0]}</strong><br /><br /><span>正在读取本地 Markdown…</span></> : <span>此文件类型暂不支持预览：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>demo/obsidian</strong></div></aside></div></section>;
+  const saveFile = async () => { if (!source || !selectedFile) return; setSaving(true); setFileMessage(""); try { const response = await fetch(apiUrl("/api/v1/files"), { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ source_id: source.id, path: selectedFile[4], content: draft }) }); if (!response.ok) throw new Error(); setPreview(draft); setEditing(false); setFileMessage("已保存"); await loadFiles(); } catch { setFileMessage("保存失败"); } finally { setSaving(false); } };
+  const deleteSelectedFile = async () => { if (!source || !selectedFile || !window.confirm(`确定删除 ${selectedFile[0]} 吗？`)) return; const response = await fetch(apiUrl("/api/v1/files"), { method: "DELETE", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ source_id: source.id, path: selectedFile[4] }) }); if (response.ok) { setSelected(""); setPreview(null); setFileMessage("已删除"); await loadFiles(); } else setFileMessage("删除失败"); };
+  const createFile = async () => { if (!source) return; const path = window.prompt("请输入 Markdown 路径，例如：05-知识库/新文件.md"); if (!path) return; const response = await fetch(apiUrl("/api/v1/files"), { method: "POST", headers: {"Content-Type":"application/json"}, body: JSON.stringify({ source_id: source.id, path, content: "# 新文件\n\n" }) }); if (response.ok) { await loadFiles(); setSelected(path); setFileMessage("已创建"); } else setFileMessage("创建失败：只能创建 Markdown 或文本文件"); };
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Demo Obsidian</span><h2>文件与数据</h2><p>左侧文件树，中间文件列表，右侧可以查看、编辑、保存和删除 Markdown。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={createFile}>新建 Markdown</button><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button></div></div><div className="file-layout"><aside className="file-tree"><strong>{source?.name ?? "Demo Obsidian"}</strong><FileTree files={files} selected={selected} onSelect={(path) => { setSelected(path); setEditing(false); setFileMessage(""); }} /><div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "已连接 demo/obsidian" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time, filePath]) => <button className={`file-row ${selected === filePath ? "selected" : ""}`} key={filePath} onClick={() => { setSelected(filePath); setEditing(false); }}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selectedFile?.[0] || "未选择文件"}</h3>{selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <div className="file-actions"><button className="secondary" onClick={() => setEditing((value) => !value)}>{editing ? "取消编辑" : "编辑"}</button><button className="primary compact" disabled={!editing || saving} onClick={saveFile}>{saving ? "保存中…" : "保存"}</button><button className="danger-button" onClick={deleteSelectedFile}>删除</button></div> : null}{fileMessage && <div className="file-message">{fileMessage}</div>}<p>内容保存在本机 Obsidian 目录中。</p><div className="preview-box">{editing ? <textarea className="markdown-editor" value={draft} onChange={(event) => setDraft(event.target.value)} /> : preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selectedFile?.[0]} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selectedFile?.[0]} /> : <span>此文件类型暂不支持预览：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>{editing ? "本地编辑" : "只读预览"}</strong></div><div className="detail-line"><span>数据位置</span><strong>demo/obsidian</strong></div></aside></div></section>;
 }
 function FileGlyph({ type }) {
   if (type === "SQLite") return <Database size={17} />;

@@ -17,6 +17,8 @@ from storage.data_sources import (
     list_sources,
     read_file_binary,
     read_file_preview,
+    write_file_text,
+    delete_file,
     register_source,
     scan_source,
 )
@@ -30,6 +32,11 @@ from storage.workflows import list_runs, list_workflows, run_workflow
 
 class _Handler(BaseHTTPRequestHandler):
     server_version = "MorningBriefLocalAPI/1.0"
+
+    def do_OPTIONS(self) -> None:  # noqa: N802
+        self.send_response(HTTPStatus.NO_CONTENT)
+        self._send_cors_headers()
+        self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/v1/health":
@@ -202,6 +209,19 @@ class _Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError, TypeError) as exc:
                 self._send_json({"error": "profile_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        if self.path == "/api/v1/files":
+            try:
+                payload = self._read_json()
+                result = write_file_text(
+                    str(payload.get("source_id", "")),
+                    str(payload.get("path", "")),
+                    str(payload.get("content", "")),
+                    database_path=self.server.database_path,
+                )
+                self._send_json({"file": result})
+            except (KeyError, ValueError, FileNotFoundError, OSError) as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if self.path.startswith("/api/v1/workflows/") and self.path.endswith("/run"):
             key = self.path.split("/")[4]
             try:
@@ -263,6 +283,24 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._send_json(get_status(self.server.database_path))
 
+    def do_DELETE(self) -> None:  # noqa: N802
+        if self.path not in {"/api/v1/files", "/api/v1/database/records"}:
+            self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
+            return
+        try:
+            payload = self._read_json()
+            if self.path == "/api/v1/files":
+                delete_file(
+                    str(payload.get("source_id", "")),
+                    str(payload.get("path", "")),
+                    database_path=self.server.database_path,
+                )
+            else:
+                delete_record(self.server.database_path, payload["table"], payload["id"])
+            self._send_json({"deleted": True})
+        except (KeyError, ValueError, FileNotFoundError, OSError, sqlite3.DatabaseError) as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
     def do_PATCH(self) -> None:  # noqa: N802
         if self.path != "/api/v1/database/records":
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
@@ -271,17 +309,6 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json()
             result = update_record(self.server.database_path, payload["table"], payload["id"], payload["record"])
             self._send_json({"record": result})
-        except (KeyError, ValueError, sqlite3.DatabaseError) as exc:
-            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
-
-    def do_DELETE(self) -> None:  # noqa: N802
-        if self.path != "/api/v1/database/records":
-            self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
-            return
-        try:
-            payload = self._read_json()
-            delete_record(self.server.database_path, payload["table"], payload["id"])
-            self._send_json({"deleted": True})
         except (KeyError, ValueError, sqlite3.DatabaseError) as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
@@ -307,8 +334,17 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(encoded)))
         self.send_header("Cache-Control", "no-store")
+        self._send_cors_headers()
         self.end_headers()
         self.wfile.write(encoded)
+
+    def _send_cors_headers(self) -> None:
+        origin = self.headers.get("Origin", "")
+        if origin in {"http://127.0.0.1:4173", "http://localhost:4173"}:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Vary", "Origin")
+            self.send_header("Access-Control-Allow-Methods", "GET,POST,PATCH,DELETE,OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def log_message(self, *_args: object) -> None:
         return
