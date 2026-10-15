@@ -35,6 +35,7 @@ const steps = [
 ];
 
 function App() {
+  const [activeSection, setActiveSection] = useState("工作台");
   const [status, setStatus] = useState(null);
   const [discovery, setDiscovery] = useState(demoDiscovery);
   const [selectedProvider, setSelectedProvider] = useState("deepseek");
@@ -84,17 +85,17 @@ function App() {
         <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
         <div className="workspace-label">本地工作台</div>
         <nav>
-          <NavItem icon={<LayoutDashboard size={17} />} label="工作台" active />
-          <NavItem icon={<FolderOpen size={17} />} label="文件与数据" />
-          <NavItem icon={<Workflow size={17} />} label="工作流" />
-          <NavItem icon={<Database size={17} />} label="数据库" />
-          <NavItem icon={<Bot size={17} />} label="Agent 运行" />
+          <NavItem icon={<LayoutDashboard size={17} />} label="工作台" active={activeSection === "工作台"} onClick={() => setActiveSection("工作台")} />
+          <NavItem icon={<FolderOpen size={17} />} label="文件与数据" active={activeSection === "文件与数据"} onClick={() => setActiveSection("文件与数据")} />
+          <NavItem icon={<Workflow size={17} />} label="工作流" active={activeSection === "工作流"} onClick={() => setActiveSection("工作流")} />
+          <NavItem icon={<Database size={17} />} label="数据库" active={activeSection === "数据库"} onClick={() => setActiveSection("数据库")} />
+          <NavItem icon={<Bot size={17} />} label="Agent 运行" active={activeSection === "Agent 运行"} onClick={() => setActiveSection("Agent 运行")} />
         </nav>
         <div className="sidebar-bottom"><NavItem icon={<Settings2 size={17} />} label="设置" /><div className="local-only"><span /> 仅在本机运行</div></div>
       </aside>
       <main className="main">
         <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className="connection"><span className="pulse" />{message}</div></header>
-        <section className="hero">
+        {activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><section className="hero">
           <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
           <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
         </section>
@@ -107,13 +108,22 @@ function App() {
             {currentStep === "channel" && <ChannelStep channels={discovery.channels} selected={selectedChannel} onSelect={setSelectedChannel} onComplete={() => completeStep("channel", selectedChannel)} />}
             {currentStep === "profile" && <ProfileStep onComplete={() => completeStep("profile", "profile ready")} />}
           </div>
-        </section>
+        </section></>}
       </main>
     </div>
   );
 }
 
-function NavItem({ icon, label, active }) { return <button className={`nav-item ${active ? "active" : ""}`}><span>{icon}</span>{label}</button>; }
+function NavItem({ icon, label, active, onClick }) { return <button type="button" className={`nav-item ${active ? "active" : ""}`} onClick={onClick}><span>{icon}</span>{label}</button>; }
+function SectionPlaceholder({ section }) {
+  const descriptions = {
+    "文件与数据": "这里将查看你的 Markdown、JSON、SQLite、日志、图片和附件。当前原型先展示导航状态。",
+    "工作流": "这里将展示待办、日程、新闻、知识库和其他业务工作流。",
+    "数据库": "这里将提供 SQLite 表的分页只读查看，不直接修改业务事实。",
+    "Agent 运行": "这里将展示 Provider、Token、耗时、输入输出和同步结果。",
+  };
+  return <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25} /></div><span className="eyebrow">Preview</span><h2>{section}</h2><p>{descriptions[section]}</p><button className="primary" type="button" onClick={() => window.location.reload()}>返回工作台</button></section>;
+}
 function WorkspaceStep({ onComplete }) { return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>应用会在本机创建数据库、知识库、日志、附件和对话目录，不会覆盖已有文件。</p><div className="path-row"><code>用户目录 / MorningBriefAgent</code><button className="secondary">选择位置</button></div><button className="primary" onClick={onComplete}>初始化本地工作区 <ChevronRight size={16} /></button></div></div>; }
 function ProviderStep({ providers, selected, onSelect, onComplete }) { return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择你的 AI Provider</h4><p>可以使用 API，也可以使用本地 Agent 进程。密钥不会显示在界面或日志中。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div><button className="primary" onClick={onComplete}>保存 Provider 选择 <ChevronRight size={16} /></button></div></div>; }
 function ChannelStep({ channels, selected, onSelect, onComplete }) { const channel = channels.find((item) => item.name === selected); return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>第一阶段先支持飞书。后续可以增加 Telegram、企业微信、邮件或 Webhook。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => onSelect("feishu")}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channel?.configured ? "已配置" : "等待配置 App ID 和 Secret"}</small></span><Settings2 size={16} /></button><button className="primary" onClick={onComplete}>保存渠道设置 <ChevronRight size={16} /></button></div></div>; }
