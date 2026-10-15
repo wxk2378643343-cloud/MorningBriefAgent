@@ -174,7 +174,7 @@ function FileWorkspace({ serviceState }) {
   ];
   const [source, setSource] = useState(null);
   const [files, setFiles] = useState(demoFiles);
-  const [selected, setSelected] = useState(demoFiles[0][0]);
+  const [selected, setSelected] = useState(demoFiles[0][4] || demoFiles[0][0]);
   const [preview, setPreview] = useState(null);
   const [binaryPreview, setBinaryPreview] = useState(null);
   const [live, setLive] = useState(false);
@@ -197,7 +197,7 @@ function FileWorkspace({ serviceState }) {
       ]);
       setSource(nextSource);
       setFiles(nextFiles);
-      setSelected(nextFiles[0]?.[0] ?? "");
+      setSelected(nextFiles[0]?.[4] ?? "");
       setLive(true);
     } catch {
       setLive(false);
@@ -208,7 +208,7 @@ function FileWorkspace({ serviceState }) {
 
   useEffect(() => {
     if (!source || !selected) return;
-    const file = files.find(([name]) => name === selected);
+    const file = files.find(([, , , , path]) => path === selected);
     if (!file || !["markdown", "json", "log", "file"].includes(file[1])) {
       setPreview(null);
       if (file && ["image", "pdf"].includes(file[1])) {
@@ -228,11 +228,11 @@ function FileWorkspace({ serviceState }) {
       .catch(() => setPreview(null));
   }, [source, selected, files]);
 
-  const selectedFile = files.find(([name]) => name === selected);
-  const visibleFiles = files.filter(([, , path]) => !folderFilter || path.startsWith(`${folderFilter}/`) || path === folderFilter);
+  const selectedFile = files.find(([, , , , path]) => path === selected);
+  const visibleFiles = files.filter(([, , path]) => !folderFilter || (folderFilter === "__root__" ? !path.includes("/") : path.startsWith(`${folderFilter}/`) || path === folderFilter));
   const binaryUrl = binaryPreview ? `data:${binaryPreview.content_type};base64,${binaryPreview.content_base64}` : null;
-  const folders = ["00-首页.md", "01-今日计划", "02-待办", "03-日程", "04-新闻简报", "05-知识库", "06-聊天复盘", "07-饮食记录", "08-运动记录", "09-基金投资", "99-归档"];
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Demo Obsidian</span><h2>文件与数据</h2><p>所有内容按照本地 Obsidian 目录展示，点击左侧文件夹切换数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button></div></div><div className="file-layout"><aside className="file-tree"><strong>{source?.name ?? "Demo Obsidian"}</strong><button className={!folderFilter ? "tree-selected" : ""} onClick={() => setFolderFilter("")}><FolderOpen size={15} />全部文件</button>{folders.map((folder) => <button key={folder} className={folderFilter === folder ? "tree-selected" : ""} onClick={() => { setFolderFilter(folder); const first = files.find(([, , path]) => path === folder || path.startsWith(`${folder}/`)); if (first) setSelected(first[0]); }}>{folder.endsWith(".md") ? <FileGlyph type="markdown" /> : <FolderOpen size={15} />}{folder}</button>)}<div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "已连接 demo/obsidian" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{visibleFiles.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected || "未选择文件"}</h3><p>这里显示 demo/obsidian 中选中文件的只读内容。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selected} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selected} /> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong>{selected}</strong><br /><br /><span>正在读取本地 Markdown…</span></> : <span>此文件类型暂不支持预览：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>demo/obsidian</strong></div></aside></div></section>;
+  const folders = [...new Set(files.flatMap(([, , path]) => path.includes("/") ? [path.split("/")[0]] : []))].sort();
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Demo Obsidian</span><h2>文件与数据</h2><p>左侧是本地 Obsidian 文件树，点击文件夹查看其中的文件。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button></div></div><div className="file-layout"><aside className="file-tree"><strong>{source?.name ?? "Demo Obsidian"}</strong><button className={!folderFilter ? "tree-selected" : ""} onClick={() => setFolderFilter("")}><FolderOpen size={15} />全部文件</button>{files.some(([, , path]) => !path.includes("/")) && <button className={folderFilter === "__root__" ? "tree-selected" : ""} onClick={() => setFolderFilter("__root__")}><FolderOpen size={15} />根目录文件</button>}{folders.map((folder) => <button key={folder} className={folderFilter === folder ? "tree-selected" : ""} onClick={() => { setFolderFilter(folder); const first = files.find(([, , path]) => path.startsWith(`${folder}/`)); if (first) setSelected(first[4]); }}><FolderOpen size={15} />{folder}</button>)}<div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "已连接 demo/obsidian" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{visibleFiles.map(([name, type, path, time, filePath]) => <button className={`file-row ${selected === filePath ? "selected" : ""}`} key={filePath} onClick={() => setSelected(filePath)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selectedFile?.[0] || "未选择文件"}</h3><p>这里显示 demo/obsidian 中选中文件的只读内容。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selectedFile?.[0]} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selectedFile?.[0]} /> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong>{selectedFile[0]}</strong><br /><br /><span>正在读取本地 Markdown…</span></> : <span>此文件类型暂不支持预览：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>demo/obsidian</strong></div></aside></div></section>;
 }
 function FileGlyph({ type }) {
   if (type === "SQLite") return <Database size={17} />;
@@ -303,7 +303,8 @@ function WorkspaceStep({ onComplete }) {
       if (typeof selected === "string") setRoot(selected);
     } catch { /* Browser preview keeps the manual path field available. */ }
   };
-  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>选择一个本地目录，应用会创建数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div></div>;
+  const initializeDemo = async () => { setBusy(true); try { const response = await fetch(apiUrl("/api/v1/workspace/initialize-demo"), { method: "POST" }); if (!response.ok) throw new Error("demo"); onComplete(); } catch { setBusy(false); } };
+  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>选择一个本地目录，应用会创建数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button><button className="secondary" disabled={busy} onClick={initializeDemo}>使用 Demo Obsidian</button></div></div></div>;
 }
 function ProviderStep({ providers, selected, onSelect, onComplete }) {
   const [apiKey, setApiKey] = useState("");
