@@ -72,13 +72,13 @@ function Register-LogonWorkflow {
 
 function Register-ReconcileWorkflow {
     $action = New-ScheduledTaskAction `
-        -Execute $pythonPath `
+        -Execute $pythonwPath `
         -Argument "main.py reconcile" `
         -WorkingDirectory $projectRoot
     $trigger = New-ScheduledTaskTrigger `
         -Once `
         -At (Get-Date).AddMinutes(1) `
-        -RepetitionInterval (New-TimeSpan -Minutes 15) `
+        -RepetitionInterval (New-TimeSpan -Minutes 30) `
         -RepetitionDuration (New-TimeSpan -Days 3650)
     $reconcileSettings = New-ScheduledTaskSettingsSet `
         -MultipleInstances IgnoreNew `
@@ -89,7 +89,7 @@ function Register-ReconcileWorkflow {
         -Trigger $trigger `
         -Principal $principal `
         -Settings $reconcileSettings `
-        -Description "Replay due MorningBriefAgent Outbox records every 15 minutes."
+        -Description "Replay due MorningBriefAgent Outbox records every 30 minutes without a console window."
     Register-ScheduledTask -TaskName "MorningBriefAgentReconcile" -InputObject $task -Force | Out-Null
 }
 
