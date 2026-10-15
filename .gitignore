@@ -50,6 +50,8 @@ data/*.sqlite3
 data/*.db
 data/locks/
 !data/.gitkeep
+/*.md
+scripts/apply_*.py
 received_images/*
 !received_images/.gitkeep
 core/user_sessions.json
