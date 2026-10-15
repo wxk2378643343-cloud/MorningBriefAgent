@@ -152,6 +152,31 @@ CREATE TABLE IF NOT EXISTS projection_records (
     UNIQUE (projection_key, source_id)
 );
 
+CREATE TABLE IF NOT EXISTS data_sources (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    root_path TEXT NOT NULL UNIQUE,
+    read_only INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS file_records (
+    id TEXT PRIMARY KEY,
+    data_source_id TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    file_name TEXT NOT NULL,
+    file_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0,
+    modified_at TEXT,
+    content_hash TEXT,
+    indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id),
+    UNIQUE (data_source_id, relative_path)
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
@@ -168,3 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_agent_usage_created
     ON agent_usage_records(created_at);
 CREATE INDEX IF NOT EXISTS idx_projection_records_source
     ON projection_records(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_file_records_source_path
+    ON file_records(data_source_id, relative_path);
+CREATE INDEX IF NOT EXISTS idx_file_records_type_modified
+    ON file_records(file_type, modified_at);
