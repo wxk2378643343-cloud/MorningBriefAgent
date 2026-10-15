@@ -125,16 +125,60 @@ function SectionPlaceholder({ section }) {
   return <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25} /></div><span className="eyebrow">Preview</span><h2>{section}</h2><p>{descriptions[section]}</p><button className="primary" type="button" onClick={() => window.location.reload()}>返回工作台</button></section>;
 }
 function FileWorkspace() {
-  const files = [
+  const demoFiles = [
     ["2026-10-15-晨间简报.md", "Markdown", "知识库 / briefings", "今天 07:45"],
     ["app.sqlite3", "SQLite", "data / database", "今天 09:12"],
     ["conversation-20261015.json", "JSON", "Agent 对话 / archive", "今天 10:26"],
     ["nutrition_20261015.jpg", "图片", "图片附件 / nutrition", "今天 12:18"],
     ["agent-20261015.log", "日志", "运行日志", "今天 14:03"],
   ];
-  const [selected, setSelected] = useState(files[0][0]);
+  const [source, setSource] = useState(null);
+  const [files, setFiles] = useState(demoFiles);
+  const [selected, setSelected] = useState(demoFiles[0][0]);
+  const [preview, setPreview] = useState(null);
+  const [live, setLive] = useState(false);
+
+  const loadFiles = async () => {
+    try {
+      const sourcesResponse = await fetch("http://127.0.0.1:8765/api/v1/data-sources");
+      const sourcesPayload = await sourcesResponse.json();
+      const nextSource = sourcesPayload.sources?.[0];
+      if (!nextSource) throw new Error("no source");
+      const filesResponse = await fetch(`http://127.0.0.1:8765/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}`);
+      const filesPayload = await filesResponse.json();
+      const nextFiles = (filesPayload.files ?? []).map((file) => [
+        file.file_name,
+        file.file_type,
+        file.relative_path,
+        file.modified_at ? new Date(Number(file.modified_at) * 1000).toLocaleString() : "本地文件",
+        file.relative_path,
+      ]);
+      setSource(nextSource);
+      setFiles(nextFiles);
+      setSelected(nextFiles[0]?.[0] ?? "");
+      setLive(true);
+    } catch {
+      setLive(false);
+    }
+  };
+
+  useEffect(() => { loadFiles(); }, []);
+
+  useEffect(() => {
+    if (!source || !selected) return;
+    const file = files.find(([name]) => name === selected);
+    if (!file || !["markdown", "json", "log", "file"].includes(file[1])) {
+      setPreview(null);
+      return;
+    }
+    fetch(`http://127.0.0.1:8765/api/v1/files?source_id=${encodeURIComponent(source.id)}&path=${encodeURIComponent(file[4] || file[2])}`)
+      .then((response) => response.json())
+      .then((payload) => setPreview(payload.file?.content ?? null))
+      .catch(() => setPreview(null));
+  }, [source, selected, files]);
+
   const selectedFile = files.find(([name]) => name === selected);
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Local data</span><h2>文件与数据</h2><p>查看本地文件、数据库、Agent 记录和附件，不复制原始数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary"><RefreshCw size={15} />刷新索引</button><button type="button" className="primary"><FolderOpen size={15} />添加目录</button></div></div><div className="file-layout"><aside className="file-tree"><strong>数据源</strong><button className="tree-selected"><FolderOpen size={15} />全部数据</button><button><FolderOpen size={15} />知识库</button><button><Database size={15} />数据库</button><button><MessageSquare size={15} />Agent 对话</button><button><Workflow size={15} />运行日志</button><div className="tree-note"><span className="pulse" /> 本地索引正常</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected}</h3><p>这里会显示受大小限制的只读预览。原始文件仍然保存在你配置的本地目录中。</p><div className="preview-box">{selectedFile?.[1] === "Markdown" ? <><strong># 今日晨间简报</strong><br /><br /><span>本地预览已准备就绪。下一步接入真实文件内容和 Markdown 渲染。</span></> : <span>此文件类型将使用专用查看器打开：{selectedFile?.[1]}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>本地文件系统</strong></div><button type="button" className="secondary">打开原文件</button></aside></div></section>;
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Local data</span><h2>文件与数据</h2><p>查看本地文件、数据库、Agent 记录和附件，不复制原始数据。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button><button type="button" className="primary"><FolderOpen size={15} />添加目录</button></div></div><div className="file-layout"><aside className="file-tree"><strong>数据源</strong><button className="tree-selected"><FolderOpen size={15} />{source?.name ?? "全部数据"}</button><button><FolderOpen size={15} />知识库</button><button><Database size={15} />数据库</button><button><MessageSquare size={15} />Agent 对话</button><button><Workflow size={15} />运行日志</button><div className="tree-note"><span className="pulse" /> {live ? "本地索引已连接" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time]) => <button className={`file-row ${selected === name ? "selected" : ""}`} key={name} onClick={() => setSelected(name)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selected || "未选择文件"}</h3><p>这里会显示受大小限制的只读预览。原始文件仍然保存在你配置的本地目录中。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong># 今日晨间简报</strong><br /><br /><span>本地预览已准备就绪。启动本地 API 后会显示真实内容。</span></> : <span>此文件类型将使用专用查看器打开：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>本地文件系统</strong></div><button type="button" className="secondary">打开原文件</button></aside></div></section>;
 }
 function FileGlyph({ type }) {
   if (type === "SQLite") return <Database size={17} />;
