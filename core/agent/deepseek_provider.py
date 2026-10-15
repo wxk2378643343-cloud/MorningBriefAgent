@@ -52,7 +52,8 @@ class DeepSeekProvider:
             },
         )
         started = time.perf_counter()
-        with urllib.request.urlopen(request, timeout=self.timeout) as response:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(request, timeout=self.timeout) as response:
             payload = json.loads(response.read().decode("utf-8"))
         duration_ms = int((time.perf_counter() - started) * 1000)
         text = payload["choices"][0]["message"]["content"]
