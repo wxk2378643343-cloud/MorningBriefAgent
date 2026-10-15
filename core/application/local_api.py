@@ -149,6 +149,16 @@ class _Handler(BaseHTTPRequestHandler):
                 if not root_path:
                     raise ValueError("root_path_required")
                 result = initialize_workspace(root_path, database_path=self.server.database_path)
+                source_id = register_source(
+                    Path(root_path).name or "Local Workspace",
+                    root_path,
+                    database_path=self.server.database_path,
+                )
+                result["source_id"] = source_id
+                result["indexed_files"] = scan_source(
+                    source_id,
+                    database_path=self.server.database_path,
+                )
                 self._send_json(result)
             except (ValueError, TypeError, OSError) as exc:
                 self._send_json({"error": "workspace_initialization_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
