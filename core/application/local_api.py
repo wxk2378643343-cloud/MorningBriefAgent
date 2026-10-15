@@ -18,7 +18,9 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = "MorningBriefLocalAPI/1.0"
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path == "/api/v1/onboarding/status":
+        if self.path == "/api/v1/health":
+            self._send_json({"status": "ok", "service": "morningbrief-local-api"})
+        elif self.path == "/api/v1/onboarding/status":
             self._send_json(get_status(self.server.database_path))
         elif self.path == "/api/v1/providers/discovery":
             self._send_json(discovery_snapshot())
