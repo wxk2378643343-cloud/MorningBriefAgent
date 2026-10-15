@@ -285,6 +285,34 @@ python -m unittest discover -s tests -v
 
 再按需执行单个服务。建议先运行前台命令观察输出，确认配置正确后再接入 Windows 计划任务。
 
+### 本地验收流程
+
+完成安装后，可以按下面的顺序验证项目：
+
+```powershell
+# 1. 运行离线测试
+python -m unittest discover -s tests -p "test_*.py"
+
+# 2. 检查 Demo 数据库结构
+python scripts/init_local_storage.py --demo
+```
+
+使用 DB Browser for SQLite 打开 `data/demo.sqlite3`，确认存在
+`todo_records`、`schedule_records`、`fund_records`、`fund_market_snapshots`、
+`news_items`、`meal_records`、`workout_records` 和 `audit_log` 等表。
+
+配置好本地 `.env` 和飞书权限后，再进行真实业务验收：
+
+1. 在飞书发送一条待办，确认 `todo_records` 新增记录，并在飞书任务成功创建后写入 `feishu_task_id`；
+2. 发送一条带时间的日程，确认 `schedule_records` 新增记录，且 `sync_status` 变为 `synced`；
+3. 发送饮食图片或饮食文字，确认先写入 `pending`，回复“确认热量 650”后再变为 `confirmed`；
+4. 执行 `python main.py fund`，确认行情写入 `fund_market_snapshots`；
+5. 执行 `python main.py news`，确认新闻写入 `news_items` 并生成飞书卡片。
+
+真实业务验收会读取本地数据或调用飞书接口，建议使用测试数据，并在执行前备份
+`data/app.sqlite3`。真实数据库位置默认为 `data/app.sqlite3`，个人数据库、
+配置、日志和图片不会提交到 Git。
+
 ## 配置
 
 项目根目录的 `.env` 会在导入配置时自动加载，已经存在的系统环境变量优先级更高。`.env` 被 Git 忽略；只提交 `.env.example`。
@@ -384,8 +412,9 @@ Demo 数据库使用独立文件，不会读取或污染真实数据：
 python scripts/init_local_storage.py --demo
 ```
 
-真实数据库是 `data/app.sqlite3`，Demo 数据库是 `data/demo.sqlite3`；
-两者都属于本机运行数据，不会提交到 Git。
+真实数据库是 `data/app.sqlite3`，Demo 数据库是 `data/demo.sqlite3`。
+真实数据库属于本机个人运行数据，不会提交到 Git；Demo 数据库不含个人信息，
+作为项目结构示例提交。
 
 ### 本地敏感数据生命周期
 
@@ -502,7 +531,7 @@ MorningBriefAgent/
 ├─ server/               # 飞书 WebSocket 长连接机器人
 ├─ scripts/              # 可选的本地维护脚本（不含 .bat/.vbs 启动器）
 ├─ tests/                # 离线单元测试与显式运行的手工集成检查
-├─ data/                 # 本地运行状态，仅提交 .gitkeep
+├─ data/                 # 本地数据库；真实库忽略，Demo 库可提交
 ├─ logs/                 # 本地日志，仅提交 .gitkeep
 ├─ received_images/      # 飞书图片缓存，仅提交 .gitkeep
 ├─ .env.example          # 脱敏配置模板
