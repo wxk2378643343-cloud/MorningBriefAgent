@@ -93,7 +93,7 @@ function App() {
   const currentIndex = Math.max(0, steps.findIndex((step) => step.key === currentStep));
   const completeStep = async (stepKey, detail) => {
     try {
-      const response = await fetch("http://127.0.0.1:8765/api/v1/onboarding/complete", {
+      const response = await fetch(apiUrl("/api/v1/onboarding/complete"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ step_key: stepKey, detail }),
@@ -303,13 +303,14 @@ function DatabaseWorkspace() {
 function WorkspaceStep({ onComplete }) {
   const [root, setRoot] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async () => {
     setBusy(true);
     try {
       const response = await fetch(apiUrl("/api/v1/workspace/initialize"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ root_path: root }) });
-      if (!response.ok) throw new Error("workspace");
+      if (!response.ok) throw new Error(await response.text());
       onComplete();
-    } catch { setBusy(false); }
+    } catch { setBusy(false); setError("工作区初始化失败，请确认目录可写且本地 API 已启动。"); }
   };
   const chooseDirectory = async () => {
     try {
@@ -317,8 +318,8 @@ function WorkspaceStep({ onComplete }) {
       if (typeof selected === "string") setRoot(selected);
     } catch { /* Browser preview keeps the manual path field available. */ }
   };
-  const initializeDemo = async () => { setBusy(true); try { const response = await fetch(apiUrl("/api/v1/workspace/initialize-demo"), { method: "POST" }); if (!response.ok) throw new Error("demo"); onComplete(); } catch { setBusy(false); } };
-  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>选择一个本地目录，应用会创建数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button><button className="secondary" disabled={busy} onClick={initializeDemo}>使用 Demo Obsidian</button></div></div></div>;
+  const initializeDemo = async () => { setBusy(true); setError(""); try { const response = await fetch(apiUrl("/api/v1/workspace/initialize-demo"), { method: "POST" }); if (!response.ok) throw new Error(await response.text()); onComplete(); } catch { setBusy(false); setError("Demo 工作区初始化失败，请重启本地 API。"); } };
+  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>先初始化工作区，应用会创建本地数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button><button className="secondary" disabled={busy} onClick={initializeDemo}>初始化 Demo 工作区</button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
 function ProviderStep({ providers, selected, onSelect, onComplete }) {
   const [apiKey, setApiKey] = useState("");
