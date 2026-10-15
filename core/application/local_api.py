@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from core.agent.discovery import discovery_snapshot
+from storage.credentials import set_secret
 from storage.data_sources import (
     inspect_sqlite,
     list_files,
@@ -20,6 +21,7 @@ from storage.data_sources import (
     scan_source,
 )
 from storage.onboarding import complete_step, get_status
+from storage.workspace import initialize_workspace, save_personal_context, workspace_info
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -28,10 +30,18 @@ class _Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/v1/health":
             self._send_json({"status": "ok", "service": "morningbrief-local-api"})
+        elif self.path == "/api/v1/app/status":
+            self._send_json({"service": "ready", "workspace": workspace_info(self.server.database_path)})
+        elif self.path == "/api/v1/workspace":
+            self._send_json(workspace_info(self.server.database_path))
         elif self.path == "/api/v1/onboarding/status":
             self._send_json(get_status(self.server.database_path))
         elif self.path == "/api/v1/providers/discovery":
             self._send_json(discovery_snapshot())
+        elif self.path == "/api/v1/providers":
+            self._send_json(discovery_snapshot())
+        elif self.path == "/api/v1/channels":
+            self._send_json({"channels": discovery_snapshot()["channels"]})
         elif self.path == "/api/v1/data-sources":
             self._send_json({"sources": list_sources(database_path=self.server.database_path)})
         elif self.path.startswith("/api/v1/file-binary"):
@@ -99,6 +109,48 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        if self.path in {"/api/v1/workspace/select", "/api/v1/workspace/initialize"}:
+            try:
+                payload = self._read_json()
+                root_path = str(payload.get("root_path", "")).strip()
+                if not root_path:
+                    raise ValueError("root_path_required")
+                result = initialize_workspace(root_path, database_path=self.server.database_path)
+                self._send_json(result)
+            except (ValueError, TypeError, OSError) as exc:
+                self._send_json({"error": "workspace_initialization_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/v1/workspace/scan":
+            self._send_json({"workspace": workspace_info(self.server.database_path)})
+            return
+        if self.path.startswith("/api/v1/providers/") and self.path.endswith("/credentials"):
+            provider = self.path.split("/")[4]
+            try:
+                payload = self._read_json()
+                secret = str(payload.get("api_key", "")).strip()
+                set_secret(f"provider:{provider}:api_key", secret)
+                self._send_json({"provider": provider, "configured": True})
+            except (ValueError, RuntimeError, TypeError) as exc:
+                self._send_json({"error": "credential_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path.startswith("/api/v1/channels/") and self.path.endswith("/credentials"):
+            channel = self.path.split("/")[4]
+            try:
+                payload = self._read_json()
+                for key in ("app_id", "app_secret", "user_open_id", "chat_id"):
+                    value = str(payload.get(key, "")).strip()
+                    if value:
+                        set_secret(f"channel:{channel}:{key}", value)
+                self._send_json({"channel": channel, "configured": True})
+            except (ValueError, RuntimeError, TypeError) as exc:
+                self._send_json({"error": "credential_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/v1/profile":
+            try:
+                self._send_json(save_personal_context(self._read_json(), database_path=self.server.database_path))
+            except (ValueError, OSError, TypeError) as exc:
+                self._send_json({"error": "profile_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if self.path == "/api/v1/data-sources":
             try:
                 payload = self._read_json()

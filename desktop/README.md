@@ -1,6 +1,7 @@
 # MorningBrief Desktop Prototype
 
-这是 Tauri + React 桌面端的第一阶段 UI 原型，当前展示首次启动向导。
+这是 Tauri + React 桌面端的第一版本地工作台。首次启动可以初始化本地工作区、
+保存 Provider/飞书凭据并建立个人上下文。
 
 ## 运行
 
@@ -28,7 +29,8 @@ API 只监听 `127.0.0.1`，默认使用本地 SQLite 配置。桌面端可以�
 `GET /api/v1/health` 判断服务是否可用。后续接入 Tauri 时，由桌面壳启动和回收
 这个 Python 子进程，不把业务逻辑复制到 TypeScript 中。
 
-当前阶段尚未接入真实 Tauri 壳、系统密钥存储和飞书配置提交。
+密钥通过 Python 的系统凭据存储边界保存，不写入 SQLite；非敏感的工作区状态和
+向导进度保存在本地 SQLite。桌面端不会把原始文件上传到云端。
 
 ### Tauri 壳
 
