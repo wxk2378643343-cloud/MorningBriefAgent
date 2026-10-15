@@ -24,6 +24,8 @@ from storage.onboarding import complete_step, get_status
 from storage.workspace import initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
 from core.runtime.config import PROJECT_ROOT
+from storage.database_browser import create as create_record, delete as delete_record, rows as database_rows, tables as database_tables, update as update_record
+from storage.workflows import list_runs, list_workflows, run_workflow
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -46,6 +48,19 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"channels": discovery_snapshot()["channels"]})
         elif self.path == "/api/v1/agent/status":
             self._send_json(read_agent_status(self.server.database_path))
+        elif self.path == "/api/v1/workflows":
+            self._send_json({"workflows": list_workflows(), "runs": list_runs(self.server.database_path)})
+        elif self.path == "/api/v1/database/tables":
+            self._send_json({"tables": database_tables(self.server.database_path)})
+        elif self.path.startswith("/api/v1/database/table"):
+            table = self._query_value("table")
+            if not table:
+                self._send_json({"error": "table_required"}, HTTPStatus.BAD_REQUEST)
+            else:
+                try:
+                    self._send_json(database_rows(self.server.database_path, table))
+                except ValueError as exc:
+                    self._send_json({"error": str(exc)}, HTTPStatus.FORBIDDEN)
         elif self.path == "/api/v1/data-sources":
             sources = list_sources(database_path=self.server.database_path)
             if not sources:
@@ -178,6 +193,21 @@ class _Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError, TypeError) as exc:
                 self._send_json({"error": "profile_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        if self.path.startswith("/api/v1/workflows/") and self.path.endswith("/run"):
+            key = self.path.split("/")[4]
+            try:
+                self._send_json(run_workflow(key, self.server.database_path), HTTPStatus.ACCEPTED)
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/v1/database/records":
+            try:
+                payload = self._read_json()
+                result = create_record(self.server.database_path, payload["table"], payload["record"])
+                self._send_json({"record": result}, HTTPStatus.CREATED)
+            except (KeyError, ValueError, sqlite3.DatabaseError) as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
         if self.path == "/api/v1/data-sources":
             try:
                 payload = self._read_json()
@@ -223,6 +253,28 @@ class _Handler(BaseHTTPRequestHandler):
             )
             return
         self._send_json(get_status(self.server.database_path))
+
+    def do_PATCH(self) -> None:  # noqa: N802
+        if self.path != "/api/v1/database/records":
+            self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
+            return
+        try:
+            payload = self._read_json()
+            result = update_record(self.server.database_path, payload["table"], payload["id"], payload["record"])
+            self._send_json({"record": result})
+        except (KeyError, ValueError, sqlite3.DatabaseError) as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def do_DELETE(self) -> None:  # noqa: N802
+        if self.path != "/api/v1/database/records":
+            self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
+            return
+        try:
+            payload = self._read_json()
+            delete_record(self.server.database_path, payload["table"], payload["id"])
+            self._send_json({"deleted": True})
+        except (KeyError, ValueError, sqlite3.DatabaseError) as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
