@@ -105,6 +105,7 @@ from .replies import (
 )
 from . import message_processor, progress
 from storage.facts import record_lifestyle_fact
+from services.lifestyle.nutrition_analysis import estimate_meal
 
 VAULT_ROOT = config.VAULT_ROOT
 
@@ -190,6 +191,7 @@ def process_message_async(sender_open_id: str, user_text: str, msg_id: str):
         gather_context=gather_agent_context,
         ask_agent=agy_bridge.ask_native_agy,
         record_fact=record_lifestyle_fact,
+        estimate_meal=estimate_meal,
         animate=animate_thinking_reply,
         stop_animation=stop_thinking_animation,
         event_fn=event,

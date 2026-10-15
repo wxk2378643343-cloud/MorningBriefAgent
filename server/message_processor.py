@@ -21,6 +21,7 @@ def process_message(
     gather_context: Callable[[str], str],
     ask_agent: Callable[[str, str, str], str],
     record_fact: Callable[..., str] | None = None,
+    estimate_meal: Callable[..., Any] | None = None,
     animate: Callable[[str, threading.Event], None],
     stop_animation: Callable[..., None],
     event_fn: Callable[..., None],
@@ -70,9 +71,17 @@ def process_message(
                 "请使用可用的图片读取能力查看附件，并只根据图片真实细节回答。"
             )
         if archive_result:
+            fact_id = None
             if record_fact:
-                record_fact(
+                fact_id = record_fact(
                     message_id=msg_id,
+                    category=archive_result["category"],
+                    text=user_text,
+                    image_paths=archive_result.get("image_paths", []),
+                )
+            if fact_id and estimate_meal:
+                estimate_meal(
+                    fact_id=fact_id,
                     category=archive_result["category"],
                     text=user_text,
                     image_paths=archive_result.get("image_paths", []),
