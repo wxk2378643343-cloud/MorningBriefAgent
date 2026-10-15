@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import sqlite3
 from pathlib import Path
 from typing import Iterable
 from uuid import uuid4
@@ -198,6 +199,64 @@ def read_file_preview(
         "content": content,
         "size_bytes": target.stat().st_size,
     }
+
+
+def inspect_sqlite(
+    source_id: str,
+    relative_path: str,
+    *,
+    table: str | None = None,
+    limit: int = 50,
+    database_path: str | os.PathLike[str] | None = None,
+) -> dict[str, object]:
+    """Read SQLite schema or a bounded page of rows without mutating it."""
+    initialize(database_path)
+    with connect(database_path) as connection:
+        source = connection.execute(
+            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
+            (source_id,),
+        ).fetchone()
+    if source is None:
+        raise KeyError(f"Unknown data source: {source_id}")
+    root = Path(str(source["root_path"])).resolve()
+    target = (root / relative_path).resolve()
+    if root != target and root not in target.parents:
+        raise ValueError("Path escapes data source root")
+    if not target.is_file():
+        raise FileNotFoundError(relative_path)
+    if target.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+        raise ValueError("not_sqlite_file")
+    bounded_limit = max(1, min(int(limit), 100))
+    uri = f"file:{target.as_posix()}?mode=ro"
+    database = sqlite3.connect(uri, uri=True)
+    try:
+        database.row_factory = sqlite3.Row
+        tables = [
+            str(row["name"])
+            for row in database.execute(
+                "SELECT name FROM sqlite_master "
+                "WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+            )
+        ]
+        result: dict[str, object] = {
+            "file_name": target.name,
+            "tables": tables,
+        }
+        if table is not None:
+            if table not in tables:
+                raise KeyError(f"Unknown table: {table}")
+            quoted_table = '"' + table.replace('"', '""') + '"'
+            rows = database.execute(
+                f"SELECT * FROM {quoted_table} LIMIT ?", (bounded_limit,)
+            ).fetchall()
+            result["columns"] = [item[0] for item in database.execute(
+                f"SELECT * FROM {quoted_table} LIMIT 0"
+            ).description or []]
+            result["rows"] = [dict(row) for row in rows]
+            result["limit"] = bounded_limit
+    finally:
+        database.close()
+    return result
 
 
 def _iter_files(root: Path, *, include_hidden: bool) -> Iterable[Path]:
