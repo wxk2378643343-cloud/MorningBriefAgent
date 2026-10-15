@@ -2,13 +2,11 @@ import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   Bot,
-  Check,
   ChevronRight,
   Database,
   FolderOpen,
   KeyRound,
   LayoutDashboard,
-  MessageSquare,
   RefreshCw,
   Settings2,
   Sparkles,
@@ -16,10 +14,10 @@ import {
 } from "lucide-react";
 import "./styles.css";
 import { apiUrl, probeLocalApi } from "./localApi";
-import { open } from "@tauri-apps/plugin-dialog";
 import WorkflowPage from "./pages/WorkflowPage";
 import DatabasePage from "./pages/DatabasePage";
 import FileTree from "./components/FileTree";
+import { ONBOARDING_STEPS, SetupScreen, StartupScreen } from "./components/onboarding/OnboardingScreen";
 
 const demoDiscovery = {
   providers: [
@@ -32,13 +30,6 @@ const demoDiscovery = {
   ],
 };
 
-const steps = [
-  { key: "workspace", label: "本地工作区", icon: FolderOpen },
-  { key: "provider", label: "AI Provider", icon: Bot },
-  { key: "channel", label: "消息渠道", icon: MessageSquare },
-  { key: "profile", label: "个人上下文", icon: Sparkles },
-];
-
 function App() {
   const [activeSection, setActiveSection] = useState("工作台");
   const [serviceState, setServiceState] = useState("starting");
@@ -49,6 +40,7 @@ function App() {
   const [selectedChannel, setSelectedChannel] = useState("feishu");
   const [message, setMessage] = useState("正在检查本地环境…");
   const [setupMode, setSetupMode] = useState(false);
+  const [setupStep, setSetupStep] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,7 +88,7 @@ function App() {
     offline: "演示模式：本地服务未连接",
     stopping: "本地服务正在停止",
   }[serviceState];
-  const currentIndex = Math.max(0, steps.findIndex((step) => step.key === currentStep));
+  const currentIndex = Math.max(0, ONBOARDING_STEPS.findIndex((step) => step.key === (setupStep ?? currentStep)));
   const completeStep = async (stepKey, detail) => {
     try {
       const response = await fetch(apiUrl("/api/v1/onboarding/complete"), {
@@ -107,6 +99,7 @@ function App() {
       if (!response.ok) throw new Error("request failed");
       const nextStatus = await response.json();
       setStatus(nextStatus);
+      setSetupStep(null);
       if (stepKey === "workspace") {
         setWorkspace(await fetch(apiUrl("/api/v1/workspace")).then((item) => item.json()));
       }
@@ -115,10 +108,25 @@ function App() {
       setMessage("演示模式：配置将在本地 API 启动后保存");
       setStatus((previous) => ({
         ...(previous ?? { steps: [], completed_count: 0, total_count: 4 }),
-        current_step: steps[Math.min(currentIndex + 1, steps.length - 1)].key,
+        current_step: ONBOARDING_STEPS[Math.min(currentIndex + 1, ONBOARDING_STEPS.length - 1)].key,
         completed_count: Math.min((previous?.completed_count ?? 0) + 1, 4),
       }));
     }
+  };
+  const skipRemainingSetup = async () => {
+    const pending = (status?.steps ?? []).filter((item) => item.status !== "completed" && item.step_key !== "workspace");
+    let nextStatus = status;
+    for (const item of pending) {
+      const response = await fetch(apiUrl("/api/v1/onboarding/complete"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_key: item.step_key, detail: "skipped; can be configured later" }),
+      });
+      if (response.ok) nextStatus = await response.json();
+    }
+    setStatus(nextStatus);
+    setSetupStep(null);
+    setMessage("已跳过后续配置，可在设置中重新配置");
   };
 
   if (serviceState !== "ready") {
@@ -130,7 +138,7 @@ function App() {
         serviceLabel={serviceLabel}
         serviceState={serviceState}
         status={status}
-        currentStep={currentStep}
+        currentStep={setupStep ?? currentStep}
         currentIndex={currentIndex}
         discovery={discovery}
         selectedProvider={selectedProvider}
@@ -138,6 +146,11 @@ function App() {
         setSelectedProvider={setSelectedProvider}
         setSelectedChannel={setSelectedChannel}
         completeStep={completeStep}
+        onBack={() => {
+          const index = ONBOARDING_STEPS.findIndex((step) => step.key === (setupStep ?? currentStep));
+          setSetupStep(ONBOARDING_STEPS[Math.max(0, index - 1)].key);
+        }}
+        onSkip={currentStep === "workspace" ? null : skipRemainingSetup}
         message={message}
       />
     );
@@ -164,60 +177,6 @@ function App() {
           <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
           <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
         </section></>}
-      </main>
-    </div>
-  );
-}
-
-function StartupScreen({ serviceState, serviceLabel, onRetry }) {
-  const isOffline = serviceState === "offline";
-  return (
-    <div className="startup-screen">
-      <div className="startup-card">
-        <div className="brand startup-brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
-        <span className="eyebrow">LOCAL DESKTOP</span>
-        <h1>{isOffline ? "本地服务没有启动" : "正在准备本地工作台"}</h1>
-        <p>{isOffline ? "请启动本地 API 后重试。你的文件和配置不会上传到云端。" : "正在检查 Python 服务和本机数据环境，请稍候。"}</p>
-        <div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div>
-        {isOffline && <button className="primary startup-action" type="button" onClick={onRetry}><RefreshCw size={15} />重新检查</button>}
-      </div>
-    </div>
-  );
-}
-
-function SetupScreen({
-  serviceLabel,
-  serviceState,
-  status,
-  currentStep,
-  currentIndex,
-  discovery,
-  selectedProvider,
-  selectedChannel,
-  setSelectedProvider,
-  setSelectedChannel,
-  completeStep,
-  message,
-}) {
-  return (
-    <div className="setup-screen">
-      <header className="setup-topbar">
-        <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
-        <div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div>
-      </header>
-      <main className="setup-main">
-        <div className="setup-intro"><span className="eyebrow">FIRST RUN</span><h1>先配置本地工作区</h1><p>选择你的本地文件位置，再配置 AI 和飞书。完成后才进入工作台。</p></div>
-        <section className="setup-card">
-          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 完成</span></div>
-          <div className="stepper">{steps.map((step, index) => { const Icon = step.icon; const done = index < currentIndex; const active = index === currentIndex; return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`} key={step.key}><div className="step-icon">{done ? <Check size={15} /> : <Icon size={16} />}</div><span>{step.label}</span>{index < steps.length - 1 && <ChevronRight className="step-arrow" size={15} />}</div>; })}</div>
-          <div className="setup-content">
-            {currentStep === "workspace" && <WorkspaceStep onComplete={() => completeStep("workspace", "local workspace initialized")} />}
-            {currentStep === "provider" && <ProviderStep providers={discovery.providers} selected={selectedProvider} onSelect={setSelectedProvider} onComplete={() => completeStep("provider", selectedProvider)} />}
-            {currentStep === "channel" && <ChannelStep channels={discovery.channels} selected={selectedChannel} onSelect={setSelectedChannel} onComplete={() => completeStep("channel", selectedChannel)} />}
-            {currentStep === "profile" && <ProfileStep onComplete={() => completeStep("profile", "profile ready")} />}
-          </div>
-          {message && <div className="setup-message">{message}</div>}
-        </section>
       </main>
     </div>
   );
@@ -380,72 +339,4 @@ function DatabaseWorkspace() {
   ];
   return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Read only</span><h2>数据库</h2><p>只读查看结构化事实、Agent 用量和同步状态。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadDatabase}><RefreshCw size={15} />刷新</button><span className="db-badge"><Database size={14} /> {databaseFile?.file_name ?? "app.sqlite3"}</span></div></div><div className="file-layout database-layout"><aside className="file-tree"><strong>数据表</strong>{tables.map((table) => <button className={selected === table ? "tree-selected" : ""} key={table} onClick={() => setSelected(table)}><Database size={14} />{table}</button>)}<div className="tree-note"><span className="pulse" /> {live ? "已读取本地 SQLite" : "演示模式：未连接本地数据库"}<br />只读模式</div></aside><div className="db-content"><div className="db-title"><div><span className="eyebrow">Table</span><h3>{selected || "未选择数据表"}</h3></div><span className="row-count">最近 50 条</span></div><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{columns.map((column) => <td key={column}>{String(row[column] ?? "")}</td>)}</tr>)}</tbody></table></div><aside className="file-detail"><span className="eyebrow">Database guard</span><h3>只读查看器</h3><p>桌面端不会直接修改业务表，避免绕过校验、幂等和同步流程。</p><div className="detail-line"><span>数据库</span><strong>{databaseFile?.file_name ?? "本地 SQLite"}</strong></div><div className="detail-line"><span>当前表</span><strong>{selected || "—"}</strong></div></aside></div></section>;
 }
-function WorkspaceStep({ onComplete }) {
-  const [root, setRoot] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const response = await fetch(apiUrl("/api/v1/workspace/initialize"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ root_path: root }) });
-      if (!response.ok) throw new Error(await response.text());
-      onComplete();
-    } catch { setBusy(false); setError("工作区初始化失败，请确认目录可写且本地 API 已启动。"); }
-  };
-  const chooseDirectory = async () => {
-    if (!window.__TAURI_INTERNALS__) {
-      setError("当前是浏览器预览，不能打开系统文件夹选择器；请直接输入本地路径，或运行 Tauri 桌面版。");
-      return;
-    }
-    try {
-      const selected = await open({ directory: true, multiple: false, title: "选择 MorningBrief 工作区" });
-      if (typeof selected === "string") setRoot(selected);
-    } catch { setError("系统文件夹选择器打开失败，请直接输入本地路径。"); }
-  };
-  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>配置本地工作区</h4><p>选择你自己的本地目录。应用只会在该目录建立必要的本地目录和 SQLite，不上传任何内容。</p><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
-}
-function ProviderStep({ providers, selected, onSelect, onComplete }) {
-  const [apiKey, setApiKey] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const provider = providers.find((item) => item.name === selected);
-      if (selected === "deepseek" && !apiKey && !provider?.configured) throw new Error("api_key_required");
-      if (selected === "deepseek" && apiKey) {
-        const response = await fetch(apiUrl(`/api/v1/providers/${selected}/credentials`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: apiKey }) });
-        if (!response.ok) throw new Error("provider");
-      }
-      onComplete();
-    } catch { setBusy(false); }
-  };
-  return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择 AI 运行方式</h4><p>优先检测本地 Agent 进程；也可以选择 API。密钥只保存到本机系统凭据。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到，可使用" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div>{selected === "deepseek" && <label className="secret-field">DeepSeek API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" /></label>}<button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "使用此 Provider"} <ChevronRight size={16} /></button></div></div>;
-}
-function ChannelStep({ channels, selected, onSelect, onComplete }) {
-  const [values, setValues] = useState({ app_id: "", app_secret: "", user_open_id: "", chat_id: "" });
-  const [busy, setBusy] = useState(false);
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const response = await fetch(apiUrl("/api/v1/channels/feishu/credentials"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
-      if (!response.ok) throw new Error("channel");
-      onComplete();
-    } catch { setBusy(false); }
-  };
-  return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => onSelect("feishu")}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><div className="channel-fields">{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <input key={key} type={key === "app_secret" ? "password" : "text"} placeholder={key} value={values[key]} onChange={(event) => setValues({ ...values, [key]: event.target.value })} />)}</div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button></div></div>;
-}
-function ProfileStep({ onComplete }) {
-  const [values, setValues] = useState({ "我的工作": "", "当前目标": "" });
-  const [busy, setBusy] = useState(false);
-  const submit = async () => {
-    setBusy(true);
-    try {
-      const response = await fetch(apiUrl("/api/v1/profile"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
-      if (!response.ok) throw new Error("profile");
-      onComplete();
-    } catch { setBusy(false); }
-  };
-  return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>内容会保存为工作区内的 Markdown 文件，之后可以随时修改。</p><div className="profile-grid"><label>我的工作<textarea value={values["我的工作"]} onChange={(event) => setValues({ ...values, "我的工作": event.target.value })} placeholder="例如：我负责……" /></label><label>当前目标<textarea value={values["当前目标"]} onChange={(event) => setValues({ ...values, "当前目标": event.target.value })} placeholder="例如：近期重点是……" /></label></div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "完成设置，进入工作台"} <ChevronRight size={16} /></button></div></div>;
-}
-
 createRoot(document.getElementById("root")).render(<App />);
