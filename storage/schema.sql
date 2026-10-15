@@ -125,6 +125,33 @@ CREATE TABLE IF NOT EXISTS news_items (
     FOREIGN KEY (source_id) REFERENCES source_records(id)
 );
 
+CREATE TABLE IF NOT EXISTS agent_usage_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    request_id TEXT NOT NULL,
+    task TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    input_tokens INTEGER,
+    output_tokens INTEGER,
+    total_tokens INTEGER,
+    token_source TEXT NOT NULL DEFAULT 'estimated',
+    duration_ms INTEGER,
+    status TEXT NOT NULL DEFAULT 'success',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS projection_records (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    projection_key TEXT NOT NULL,
+    target_path TEXT NOT NULL,
+    source_type TEXT NOT NULL,
+    source_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'success',
+    error_message TEXT,
+    projected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (projection_key, source_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
@@ -137,3 +164,7 @@ CREATE INDEX IF NOT EXISTS idx_fund_snapshots_code_time
     ON fund_market_snapshots(fund_code, market_time);
 CREATE INDEX IF NOT EXISTS idx_news_items_published
     ON news_items(published_at);
+CREATE INDEX IF NOT EXISTS idx_agent_usage_created
+    ON agent_usage_records(created_at);
+CREATE INDEX IF NOT EXISTS idx_projection_records_source
+    ON projection_records(source_type, source_id);

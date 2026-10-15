@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+from storage.usage import UsageTimer, estimate_tokens, record_usage
 from typing import Any, Optional
 
 try:
@@ -18,7 +19,17 @@ except ImportError:
 
 def ask_text(task: str, prompt: str, context: str = "") -> str:
     """Run a task through the existing AGY bridge and return text."""
-    return agy_bridge.ask_native_agy(task, prompt, context)
+    timer = UsageTimer()
+    result = agy_bridge.ask_native_agy(task, prompt, context)
+    record_usage(
+        task=task,
+        provider="agy",
+        input_tokens=estimate_tokens(prompt + context),
+        output_tokens=estimate_tokens(result),
+        duration_ms=timer.elapsed_ms(),
+        status="error" if result.startswith("❌") else "success",
+    )
+    return result
 
 
 def ask_json(
