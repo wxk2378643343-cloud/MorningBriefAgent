@@ -255,7 +255,11 @@ def record_fitness_to_obsidian(workout_data: Dict[str, Any]):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 old_content = f.read()
-            if "今日饮食营养摄入" in old_content or "- [x]" in old_content:
+            if (
+                "今日饮食营养摄入" in old_content
+                or "- [x]" in old_content
+                or "<!-- feishu-message:" in old_content
+            ):
                 print(f"ℹ️ 今日课表已存在且包含饮食/打卡记录，跳过覆写以保护已有数据: {file_path}")
                 return
         except Exception:

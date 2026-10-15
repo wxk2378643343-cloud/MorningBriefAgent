@@ -6,6 +6,7 @@ import datetime
 import os
 import re
 import sqlite3
+from contextlib import closing
 from typing import Iterable, List
 
 
@@ -17,8 +18,11 @@ def extract_candidates(
     todo_path: str,
     keywords: Iterable[str],
     log_keywords: Iterable[str],
-    limit: int = 6,
+    limit: int = 100,
 ) -> List[str]:
+    """Collect deterministic candidates; semantic relevance belongs to Agent."""
+    # Retained for caller compatibility. Keywords must not hide valid commitments.
+    del keywords, log_keywords
     candidates: List[str] = []
     seen = set()
     try:
@@ -32,7 +36,7 @@ def extract_candidates(
     today_ts = int(today_start.timestamp())
     if os.path.exists(message_db):
         try:
-            with sqlite3.connect(message_db) as connection:
+            with closing(sqlite3.connect(message_db)) as connection:
                 tables = [
                     row[0] for row in connection.execute(
                         "SELECT name FROM sqlite_master "
@@ -43,7 +47,7 @@ def extract_candidates(
                     try:
                         rows = connection.execute(
                             f"SELECT message_content, create_time, status FROM {table} "
-                            "WHERE create_time >= ? ORDER BY create_time DESC LIMIT 25",
+                            "WHERE create_time >= ? ORDER BY create_time DESC LIMIT 100",
                             (today_ts,),
                         ).fetchall()
                         for content, _created, _status in rows:
@@ -59,16 +63,11 @@ def extract_candidates(
                                 or "<appmsg" in text
                             ):
                                 continue
-                            if any(keyword in text for keyword in keywords):
-                                if text not in seen:
-                                    seen.add(text)
-                                    candidates.append(text)
-                            if len(candidates) >= 5:
-                                break
+                            if text not in seen:
+                                seen.add(text)
+                                candidates.append(text)
                     except sqlite3.Error:
                         continue
-                    if len(candidates) >= 5:
-                        break
         except sqlite3.Error as exc:
             print(f"WeChat scan exception: {exc}")
 
@@ -78,14 +77,16 @@ def extract_candidates(
                 for line in file:
                     if "收到飞书新消息" not in line or "内容: '" not in line:
                         continue
+                    timestamp = re.match(r"(\d{4}-\d{2}-\d{2})", line)
+                    if not timestamp or timestamp.group(1) != today_start.date().isoformat():
+                        continue
                     match = re.search(r"内容:\s*'([^']+)'", line)
                     if not match:
                         continue
                     text = match.group(1).strip()
-                    if any(keyword in text for keyword in log_keywords):
-                        if text not in seen and len(text) < 50:
-                            seen.add(text)
-                            candidates.append(text)
+                    if text not in seen and 4 <= len(text) <= 200:
+                        seen.add(text)
+                        candidates.append(text)
         except OSError as exc:
             print(f"Feishu log scan warning: {exc}")
 

@@ -64,6 +64,20 @@ class FeishuClient:
                     raise RetryableIntegrationError(str(exc)) from exc
             return retry_call(operation)
 
+    def _patch(self, *args, **kwargs):
+        with timed(logger, "feishu.http.patch"):
+            def operation():
+                try:
+                    response = self.session.patch(*args, **kwargs)
+                    if response.status_code in (429, 500, 502, 503, 504):
+                        raise RetryableIntegrationError(
+                            f"feishu provider status {response.status_code}"
+                        )
+                    return response
+                except requests.RequestException as exc:
+                    raise RetryableIntegrationError(str(exc)) from exc
+            return retry_call(operation)
+
     def get_token(self) -> Optional[str]:
         """Fetch or refresh tenant access token."""
         now = time.time()
@@ -201,11 +215,16 @@ class FeishuClient:
             logger.error(f"❌ 爪爪openclaw 发送文本消息失败: {e}")
             return False
 
-    def reply_message(self, message_id: str, content: dict, msg_type: str) -> bool:
-        """Reply in an existing message thread through the official API."""
+    def reply_message(
+        self,
+        message_id: str,
+        content: dict,
+        msg_type: str,
+    ) -> Optional[str]:
+        """Reply in a thread and return the new bot message ID."""
         token = self.get_token()
         if not token or not message_id:
-            return False
+            return None
         url = f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}/reply"
         payload = {
             "content": json.dumps(content, ensure_ascii=False),
@@ -221,10 +240,54 @@ class FeishuClient:
                 json=payload,
                 timeout=15,
             )
-            return response.json().get("code") == 0
+            result = response.json()
+            if result.get("code") != 0:
+                logger.warning(
+                    "Feishu thread reply rejected: code=%s msg=%s",
+                    result.get("code"),
+                    result.get("msg"),
+                )
+                return None
+            reply_message_id = result.get("data", {}).get("message_id")
+            if not reply_message_id:
+                logger.warning("Feishu thread reply succeeded without message_id")
+                return None
+            return str(reply_message_id)
         except Exception as exc:
             logger.error("Feishu thread reply failed: %s", exc)
+            return None
+
+    def update_card(self, message_id: str, card: dict) -> bool:
+        """Replace one previously sent interactive card in place."""
+        token = self.get_token()
+        if not token or not message_id:
             return False
+        card_content = card.get("card", card) if isinstance(card, dict) else card
+        if not isinstance(card_content, dict):
+            return False
+        config_block = card_content.setdefault("config", {})
+        config_block["update_multi"] = True
+        try:
+            response = self._patch(
+                f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}",
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json; charset=utf-8",
+                },
+                json={"content": json.dumps(card_content, ensure_ascii=False)},
+                timeout=15,
+            )
+            result = response.json()
+            if result.get("code") == 0:
+                return True
+            logger.warning(
+                "Feishu card update rejected: code=%s msg=%s",
+                result.get("code"),
+                result.get("msg"),
+            )
+        except Exception as exc:
+            logger.error("Feishu card update failed: %s", exc)
+        return False
 
     def download_image(self, message_id: str, image_key: str) -> Optional[bytes]:
         """Download an image resource from a Feishu message."""

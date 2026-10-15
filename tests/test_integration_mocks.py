@@ -4,6 +4,7 @@ import io
 import datetime
 import hashlib
 import json
+import os
 import sqlite3
 import subprocess
 import sys
@@ -18,8 +19,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parent.parent
 import main as cli
 from core.agent import agy_bridge
+from core.agent import context as agent_context
 from core.agent import provider as agent_provider
-from services.content import global_news
+from services.content import global_news, inspect_and_brief
 from core.integrations.feishu import idempotency
 from services.planning import daily_todo as daily_todo_service
 from core.agent.contracts import AgentPlan
@@ -31,10 +33,16 @@ from core.runtime import config
 from core.runtime.observability import redact_sensitive_text
 from services.communications import chat_reader
 from services.finance import fund_advisor
+from services.lifestyle import feishu_archive
+from services.lifestyle import fitness_daily
 from services.planning import calendar_sync as calendar_sync_service
 from services.planning import feishu_tasks as feishu_tasks_service
 from services.planning import review_sync
-from services.communications.chat_analysis import analyze_and_reflect
+from services.planning import todo_analysis
+from services.communications.chat_analysis import (
+    _build_agent_batches,
+    analyze_and_reflect,
+)
 from server import feishu_bot_server
 
 
@@ -79,6 +87,155 @@ class FakeHttpSession:
 
 
 class MockIntegrationTests(unittest.TestCase):
+    def test_context_vault_fallback_is_explicit_and_keeps_multiple_sources(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "one.md").write_text("今日计划 A" * 500, encoding="utf-8")
+            (root / "two.md").write_text("今日待办 B" * 500, encoding="utf-8")
+            with mock.patch.dict(
+                os.environ,
+                {
+                    "VAULT_ROOT": str(root),
+                    "AGENT_CONTEXT_FILES": "",
+                    "AGENT_CONTEXT_DIRS": "",
+                },
+            ):
+                default_documents = agent_context.collect_context_documents(
+                    "今日 计划 待办", max_files=2, max_chars=2000
+                )
+                documents = agent_context.collect_context_documents(
+                    "今日 计划 待办",
+                    max_files=2,
+                    max_chars=2000,
+                    fallback_dirs=(root,),
+                )
+        self.assertEqual(default_documents, [])
+        self.assertEqual(len(documents), 2)
+        self.assertEqual(sum(len(item["excerpt"]) for item in documents), 2000)
+
+    def test_todo_fact_analysis_rejects_untraceable_agent_items(self):
+        response = {
+            "valid_items": [
+                {
+                    "title": "跟进项目",
+                    "source_text": "明天跟进项目",
+                    "confidence": 0.9,
+                    "reason": "明确承诺",
+                },
+                {
+                    "title": "凭空任务",
+                    "source_text": "不存在的原句",
+                    "confidence": 0.99,
+                },
+            ],
+            "rejected_items": [],
+            "constraints": [],
+        }
+        with mock.patch.object(agent_provider, "ask_json", return_value=response):
+            result = todo_analysis.analyze_candidates(["明天跟进项目"], "2026-10-16")
+        self.assertEqual(
+            [item["title"] for item in result["valid_items"]],
+            ["跟进项目"],
+        )
+
+    def test_empty_content_fails_quality_gate(self):
+        news_quality = global_news.evaluate_news_quality(
+            {"domestic": [], "world": []}, []
+        )
+        brief_quality = inspect_and_brief.evaluate_brief_quality(
+            {"documents": [], "emails": []}
+        )
+        self.assertFalse(news_quality.ready)
+        self.assertFalse(brief_quality.ready)
+
+    def test_lifestyle_archive_classifies_records_but_not_plan_questions(self):
+        self.assertEqual(
+            feishu_archive.classify_lifestyle_record("牛肉面加牛肉 今天中午饭"),
+            "午餐",
+        )
+        self.assertEqual(
+            feishu_archive.classify_lifestyle_record("这是我今天训练成果"),
+            "训练打卡",
+        )
+        self.assertIsNone(
+            feishu_archive.classify_lifestyle_record("今天健身计划是什么？")
+        )
+        self.assertIsNone(
+            feishu_archive.classify_lifestyle_record("香蕉热量多少？")
+        )
+        self.assertEqual(
+            feishu_archive.classify_lifestyle_record(
+                "这个早餐怎么样？", has_images=True
+            ),
+            "早餐",
+        )
+
+    def test_lifestyle_archive_copies_image_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            archive_dir = root / "fitness"
+            source = root / "meal.jpg"
+            source.write_bytes(b"fake-image")
+            when = datetime.datetime(2026, 10, 14, 8, 27, 13)
+            with mock.patch.object(
+                feishu_archive.config,
+                "FITNESS_ARCHIVE_DIR",
+                str(archive_dir),
+            ), mock.patch.object(
+                feishu_archive.config,
+                "PROJECT_ROOT",
+                root,
+            ):
+                first = feishu_archive.archive_lifestyle_message(
+                    "今天早餐",
+                    "om_breakfast",
+                    [str(source)],
+                    now=when,
+                )
+                second = feishu_archive.archive_lifestyle_message(
+                    "今天早餐",
+                    "om_breakfast",
+                    [str(source)],
+                    now=when,
+                )
+
+            self.assertFalse(first["duplicate"])
+            self.assertTrue(second["duplicate"])
+            note = Path(first["note_path"]).read_text(encoding="utf-8")
+            self.assertEqual(note.count("<!-- feishu-message:om_breakfast -->"), 1)
+            self.assertIn("## 08:27 · 早餐", note)
+            self.assertIn("![早餐](2026-10-14/", note)
+            self.assertEqual(len(list((archive_dir / "2026-10-14").iterdir())), 1)
+
+    def test_fitness_publisher_does_not_overwrite_feishu_records(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive_dir = Path(tmp)
+            note = archive_dir / "2026-10-14-训练课表推送与执行记录.md"
+            original = (
+                "# existing\n\n"
+                "<!-- feishu-message:om_breakfast -->\n"
+                "## 08:27 · 早餐\n"
+            )
+            note.write_text(original, encoding="utf-8")
+            workout = {
+                "weekday_str": "Wednesday",
+                "muscle_group": "恢复",
+                "exercises": [],
+            }
+            fixed_date = datetime.date(2026, 10, 14)
+            with mock.patch.object(
+                fitness_daily.config,
+                "FITNESS_ARCHIVE_DIR",
+                str(archive_dir),
+            ), mock.patch.object(
+                fitness_daily.datetime,
+                "date",
+            ) as fake_date:
+                fake_date.today.return_value = fixed_date
+                fitness_daily.record_fitness_to_obsidian(workout)
+
+            self.assertEqual(note.read_text(encoding="utf-8"), original)
+
     def test_log_redaction_removes_connection_credentials(self):
         message = (
             "connected to wss://example.test/ws?"
@@ -183,12 +340,29 @@ class MockIntegrationTests(unittest.TestCase):
         bot.assert_called_once_with()
 
     def test_evening_review_saves_plan_and_sends_card(self):
+        analysis = {
+            "target_date": "2026-10-15",
+            "valid_items": [{
+                "title": "跟进事项",
+                "source_text": "跟进事项",
+                "confidence": 0.9,
+                "reason": "明确行动",
+            }],
+            "rejected_items": [],
+            "constraints": [],
+        }
         with mock.patch.object(
             daily_todo_service, "extract_candidates_from_chat", return_value=["跟进事项"]
         ), mock.patch.object(
-            daily_todo_service, "get_default_baseline_todos", return_value=[]
+            daily_todo_service.todo_analysis, "analyze_candidates", return_value=analysis
         ), mock.patch.object(
-            daily_todo_service, "get_default_schedule_slots", return_value=[]
+            daily_todo_service,
+            "generate_agent_plan",
+            return_value={
+                "date": "2026-10-15",
+                "todos": ["跟进事项"],
+                "schedule_slots": [],
+            },
         ), mock.patch.object(
             daily_todo_service, "save_staged_plan"
         ) as save_plan, mock.patch.object(
@@ -198,6 +372,7 @@ class MockIntegrationTests(unittest.TestCase):
 
         saved = save_plan.call_args.args[0]
         self.assertEqual(saved["todos"], ["跟进事项"])
+        self.assertEqual(saved["analysis"], analysis)
         self.assertFalse(saved["confirmed"])
         self.assertEqual(push_card.call_count, 1)
 
@@ -239,8 +414,16 @@ class MockIntegrationTests(unittest.TestCase):
         </item></channel></rss>"""
         opener = FakeOpener(rss)
         with mock.patch.object(global_news.config, "NEWS_WORLD_URLS", ("https://rss.test/feed",)), \
-             mock.patch.object(global_news, "translate_and_summarize_world_news",
-                                return_value=("Agent 发布", "新增工具")):
+             mock.patch.object(
+                 global_news,
+                 "normalize_world_news_batch",
+                 side_effect=lambda items: [{
+                     "title": "Agent 发布",
+                     "en_title": items[0]["title"],
+                     "link": items[0]["link"],
+                     "desc": "新增工具",
+                 }],
+             ):
             items = global_news.get_world_news(opener=opener)
         self.assertEqual(items[0]["link"], "https://example.test/a")
         self.assertEqual(opener.calls[0][0], "https://rss.test/feed")
@@ -295,6 +478,46 @@ class MockIntegrationTests(unittest.TestCase):
         self.assertEqual(result["compact_privates"][0]["topics"], "跟进")
         self.assertEqual(result["agent_summary"], "存在一项明确跟进事项")
         ask.assert_called_once()
+
+    def test_chat_analysis_batches_preserve_every_selected_message(self):
+        private_messages = [
+            (f"{index // 60:02d}:{index % 60:02d}", "本人", "较长消息" * 20, "💬")
+            for index in range(180)
+        ]
+        group_messages = [
+            ("10:00", "群友", "群聊内容" * 20, "💬") for _ in range(40)
+        ]
+        batches = _build_agent_batches(
+            [{
+                "name": "联系人",
+                "time_span": "00:00~02:59",
+                "messages": private_messages,
+            }],
+            [{
+                "name": "群聊",
+                "messages": group_messages,
+                "my_messages": [],
+                "other_messages": group_messages,
+            }],
+            "2026-10-14",
+        )
+        included_private = sum(
+            len(item["messages"])
+            for batch in batches
+            for item in batch["private"]
+        )
+        included_groups = sum(
+            len(item["messages"])
+            for batch in batches
+            for item in batch["groups"]
+        )
+        self.assertGreater(len(batches), 1)
+        self.assertEqual(included_private, len(private_messages))
+        self.assertEqual(included_groups, len(group_messages))
+        self.assertLessEqual(
+            max(len(json.dumps(batch, ensure_ascii=False)) for batch in batches),
+            20000,
+        )
 
     def test_agent_plan_contract_rejects_invalid_schedule(self):
         with self.assertRaises(ValueError):
@@ -394,10 +617,80 @@ class MockIntegrationTests(unittest.TestCase):
     def test_feishu_gateway_routes_thread_replies_to_client(self):
         class FakeClient:
             def reply_message(self, message_id, content, msg_type):
-                return message_id == "msg-1" and content == {"text": "ok"} and msg_type == "text"
+                if message_id == "msg-1" and content == {"text": "ok"} and msg_type == "text":
+                    return "om-reply"
+                return None
+
+            def update_card(self, message_id, card):
+                return message_id == "om-reply" and card == {"elements": []}
 
         gateway = FeishuGateway(FakeClient())
-        self.assertTrue(gateway.reply_text("msg-1", "ok"))
+        self.assertEqual(gateway.reply_text("msg-1", "ok"), "om-reply")
+        self.assertTrue(gateway.update_card("om-reply", {"elements": []}))
+
+    def test_bot_streams_progress_and_final_into_one_reply_card(self):
+        with mock.patch.object(
+            feishu_bot_server.daily_todo_service,
+            "handle_todo_intent",
+            return_value=None,
+        ), mock.patch.object(
+            feishu_bot_server,
+            "get_and_clear_user_images",
+            return_value=[],
+        ), mock.patch.object(
+            feishu_bot_server.feishu_archive,
+            "archive_lifestyle_message",
+            return_value=None,
+        ), mock.patch.object(
+            feishu_bot_server,
+            "gather_agent_context",
+            return_value="context",
+        ), mock.patch.object(
+            feishu_bot_server.agy_bridge,
+            "ask_native_agy",
+            return_value="最终回答",
+        ), mock.patch.object(
+            feishu_bot_server,
+            "reply_feishu_message",
+            return_value="om-progress",
+        ) as reply_message, mock.patch.object(
+            feishu_bot_server,
+            "update_feishu_reply",
+            return_value=True,
+        ) as update_reply:
+            feishu_bot_server.process_message_async(
+                "ou-user",
+                "请分析今天的安排",
+                "om-user-message",
+            )
+
+        self.assertEqual(reply_message.call_count, 1)
+        self.assertEqual(update_reply.call_count, 2)
+        self.assertEqual(update_reply.call_args_list[-1].args[0], "om-progress")
+        self.assertEqual(update_reply.call_args_list[-1].args[1], "最终回答")
+
+    def test_thinking_animation_rotates_one_card_until_stopped(self):
+        class StopAfterOneFrame:
+            def __init__(self):
+                self.calls = 0
+
+            def wait(self, _seconds):
+                self.calls += 1
+                return self.calls > 1
+
+        with mock.patch.object(
+            feishu_bot_server,
+            "update_feishu_reply",
+            return_value=True,
+        ) as update_reply:
+            feishu_bot_server.animate_thinking_reply(
+                "om-progress",
+                StopAfterOneFrame(),
+            )
+
+        update_reply.assert_called_once()
+        self.assertEqual(update_reply.call_args.args[0], "om-progress")
+        self.assertIn("✦ · ·  Agent 正在深度分析", update_reply.call_args.args[1])
 
     def test_reconcile_replays_failed_card_without_duplicate_provider_call(self):
         class FakeClient:

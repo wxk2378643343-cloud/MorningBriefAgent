@@ -45,11 +45,14 @@ class FeishuGateway:
             )
             raise
 
-    def reply_card(self, message_id: str, card: dict) -> bool:
+    def reply_card(self, message_id: str, card: dict):
         return self.client.reply_message(message_id, card, "interactive")
 
-    def reply_text(self, message_id: str, text: str) -> bool:
+    def reply_text(self, message_id: str, text: str):
         return self.client.reply_message(message_id, {"text": text}, "text")
+
+    def update_card(self, message_id: str, card: dict) -> bool:
+        return self.client.update_card(message_id, card)
 
     def download_image(self, message_id: str, image_key: str):
         return self.client.download_image(message_id, image_key)

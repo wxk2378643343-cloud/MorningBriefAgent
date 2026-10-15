@@ -1,371 +1,229 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Global News & Tech Radar Agent
-Aggregates Domestic Headliness, International Breaking News,
-and Hardcore Open-Source / AI Tech Trends, delivers Feishu interactive card.
-"""
+"""Global news workflow façade: collect -> validate -> analyze -> publish."""
 
-import os
-import re
-import sys
-import io
-import json
+from __future__ import annotations
+
 import datetime
-import urllib.request
-import xml.etree.ElementTree as ET
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Any
 
-if sys.platform == "win32":
-    try:
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
-    except Exception:
-        pass
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from core.runtime import config
-from core.agent import context as agent_context
-from core.agent import provider as agent_provider
 from core.integrations.feishu.gateway import feishu_gateway
 from core.integrations.feishu.idempotency import make_key
+from core.pipeline import QualityReport, SourceStatus
+from core.runtime import config
+from services.content import news_analysis, news_renderer, news_sources
+
 
 LOCAL_PROXY = config.LOCAL_PROXY
+DEFAULT_DOMESTIC_URLS = (
+    "https://feed.mix.sina.com.cn/api/roll/get?pageid=153&lid=2509&k=&num=8&page=1",
+    "https://zhibo.sina.com.cn/api/zhibo/feed?zhibo_id=152&id=0&tag_id=0&page=1&page_size=6&type=0",
+)
+DEFAULT_WORLD_URLS = (
+    "https://feeds.bbci.co.uk/news/world/rss.xml",
+    "https://rss.nytimes.com/services/xml/rss/nyt/World.xml",
+)
+DEFAULT_TECH_URLS = ("https://github.blog/changelog/feed/",)
+_feed_entries = news_sources.feed_entries
 
-def get_domestic_news(opener=None) -> List[Dict[str, str]]:
-    """Gather real-time domestic headline news (DIRECT, NO PROXY)."""
-    items = []
-    opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
-    try:
-        url = config.NEWS_DOMESTIC_URLS[0] if config.NEWS_DOMESTIC_URLS else ""
-        if not url:
-            return items
-        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with opener.open(req, timeout=6) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            for entry in data.get("result", {}).get("data", []):
-                title = entry.get("title", "").strip()
-                link = entry.get("url", "").strip()
-                intro = entry.get("intro", "").strip() or entry.get("summary", "").strip()
-                if title and link:
-                    items.append({
-                        "title": title,
-                        "link": link,
-                        "desc": intro[:90] if intro else "国内宏观财经与产业最新要闻"
-                    })
-                if len(items) >= 3:
-                    break
-    except Exception as e:
-        print(f"⚠️ 获取国内滚重新闻异常: {e}")
-        
-    # Fallback to Sina 7x24 Live
-    if len(items) < 3 and len(config.NEWS_DOMESTIC_URLS) > 1:
-        try:
-            live_url = config.NEWS_DOMESTIC_URLS[1]
-            req = urllib.request.Request(live_url, headers={"User-Agent": "Mozilla/5.0"})
-            with opener.open(req, timeout=5) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                for entry in data.get("result", {}).get("data", {}).get("feed", {}).get("list", []):
-                    txt = entry.get("rich_text") or entry.get("content") or ""
-                    txt = re.sub(r"<[^>]+>", "", txt).strip()
-                    doc_url = entry.get("doc_url") or config.NEWS_FALLBACK_LINK
-                    if txt:
-                        title_part = txt.split("【")[-1].split("】")[0] if "【" in txt and "】" in txt else txt[:45]
-                        items.append({
-                            "title": title_part,
-                            "link": doc_url,
-                            "desc": txt[:90]
-                        })
-                    if len(items) >= 3:
-                        break
-        except Exception as e:
-            print(f"⚠️ 获取国内快讯异常: {e}")
-            
-    return items[:3]
 
-def translate_and_summarize_world_news(en_title: str, en_desc: str) -> tuple[str, str]:
-    """Translate and summarize one article with the local Agent.
+def _with_source_ids(
+    category: str, items: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    return [
+        {**item, "source_id": str(item.get("source_id") or f"{category}:{index}")}
+        for index, item in enumerate(news_sources.deduplicate(items))
+    ]
 
-    The parser supplies source text only. It must not infer geopolitical facts
-    from keywords or append generic claims that are absent from the article.
-    """
-    prompt = agent_context.build_prompt(
-        task=(
-            "将这条外文新闻翻译并压缩成中文。严格返回 JSON："
-            "{\"title\":\"准确中文标题\",\"summary\":\"基于原文的中文摘要\"}。"
-            "只陈述标题和摘要明确支持的事实；无法确认的信息标记为“原文未说明”，"
-            "不要补充背景、预测、立场或其他新闻内容。"
+
+def get_domestic_news(opener=None) -> list[dict[str, Any]]:
+    return _with_source_ids(
+        "domestic",
+        news_sources.collect_domestic(
+            config.NEWS_DOMESTIC_URLS or DEFAULT_DOMESTIC_URLS,
+            fallback_link=config.NEWS_FALLBACK_LINK,
+            opener=opener,
         ),
-        query=en_title,
-        context=f"【原标题】\n{en_title}\n\n【原文摘要】\n{en_desc}",
     )
-    try:
-        parsed = agent_provider.ask_json("world-news-summary", prompt)
-        if isinstance(parsed, dict):
-            title = str(parsed.get("title", "")).strip()
-            summary = str(parsed.get("summary", "")).strip()
-            if title and summary:
-                return title, summary
-    except Exception as exc:
-        print(f"⚠️ Agent 新闻摘要暂不可用: {exc}")
 
-    # Safe fallback: preserve the source instead of fabricating a summary.
-    return f"国际新闻：{en_title[:80]}", en_desc[:240] or "原文摘要为空，暂无法生成中文精读。"
 
-def get_world_news(opener=None) -> List[Dict[str, str]]:
-    """Gather international breaking news (VIA OVERSEAS PROXY 7897) with Chinese summaries."""
-    items = []
-    proxy_handler = urllib.request.ProxyHandler(
-        {'http': LOCAL_PROXY, 'https': LOCAL_PROXY} if LOCAL_PROXY else {}
+def normalize_world_news_batch(
+    source_items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Compatibility façade for callers and tests."""
+    return news_analysis.normalize_world_news(source_items)
+
+
+def get_world_news(opener=None) -> list[dict[str, Any]]:
+    source_items = _with_source_ids(
+        "world",
+        news_sources.collect_feed_items(
+            config.NEWS_WORLD_URLS or DEFAULT_WORLD_URLS,
+            proxy=LOCAL_PROXY,
+            opener=opener,
+        ),
     )
-    opener = opener or urllib.request.build_opener(proxy_handler)
-    
-    for source_url in config.NEWS_WORLD_URLS:
-        if len(items) >= 3:
-            break
-        try:
-            req = urllib.request.Request(source_url, headers={"User-Agent": "Mozilla/5.0"})
-            with opener.open(req, timeout=10) as resp:
-                content = resp.read()
-            root = ET.fromstring(content)
-            for item in root.findall(".//item"):
-                title = item.findtext("title", "").strip()
-                link = item.findtext("link", "").strip()
-                desc = item.findtext("description", "").strip()
-                clean_desc = re.sub(r"<[^>]+>", "", desc).replace("&nbsp;", " ").strip()
-                if title and link:
-                    zh_t, zh_d = translate_and_summarize_world_news(title, clean_desc)
-                    items.append({
-                        "title": zh_t,
-                        "en_title": title,
-                        "link": link,
-                        "desc": zh_d
-                    })
-                if len(items) >= 3:
-                    break
-        except Exception as e:
-            print(f"⚠️ 代理拉取新闻源异常 ({source_url}): {e}")
-            
-    return items[:3]
+    return normalize_world_news_batch(source_items)
 
-def get_domestic_and_world_news() -> Dict[str, List[Dict[str, str]]]:
-    """Gather domestic (direct) and international (proxy) breaking news."""
-    return {
-        "domestic": get_domestic_news(),
-        "world": get_world_news()
-    }
 
-def get_tech_radar_news() -> List[Dict[str, str]]:
-    """Extract the latest technical digest from the configured local directory."""
-    tech_items = []
-    tech_dir = config.TECH_NEWS_DIR
-    
-    if os.path.exists(tech_dir):
-        files = sorted([f for f in os.listdir(tech_dir) if f.endswith(".md")], reverse=True)
-        if files:
-            latest_file = os.path.join(tech_dir, files[0])
-            try:
-                with open(latest_file, "r", encoding="utf-8", errors="ignore") as f:
-                    content = f.read()
-                
-                # Extract Top GitHub & AI apps
-                gh_matches = re.findall(r"### \d+\.\d+\s+([^\n]+)\s*\(\[([^\]]+)\]\((https?://[^\)]+)\)\)", content)
-                for gm in gh_matches[:3]:
-                    tech_items.append({
-                        "name": gm[0].strip(),
-                        "repo": gm[1].strip(),
-                        "url": gm[2].strip()
-                    })
-            except Exception:
-                pass
+def get_domestic_and_world_news() -> dict[str, list[dict[str, Any]]]:
+    return {"domestic": get_domestic_news(), "world": get_world_news()}
 
-    if not tech_items:
-        tech_items = []
-    return tech_items
+
+def get_tech_radar_news(opener=None) -> list[dict[str, Any]]:
+    local = news_sources.collect_local_tech(config.TECH_NEWS_DIR)
+    if local:
+        return _with_source_ids("technology", local)
+    feed_items = news_sources.collect_feed_items(
+        config.NEWS_TECH_URLS or DEFAULT_TECH_URLS,
+        proxy=LOCAL_PROXY,
+        opener=opener,
+    )
+    return _with_source_ids(
+        "technology",
+        [
+            {
+                "name": item["title"],
+                "repo": "GitHub Changelog",
+                "url": item["link"],
+                "desc": item.get("desc", ""),
+                "published": item.get("published", ""),
+                "source_url": item.get("source_url", ""),
+            }
+            for item in feed_items
+        ],
+    )
+
+
+def _fresh(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        item for item in news_sources.deduplicate(items)
+        if news_sources.is_fresh(item)
+    ]
+
+
+def validate_news_inputs(
+    news_data: dict[str, Any],
+    tech_items: list[dict[str, Any]],
+) -> tuple[dict[str, list[dict[str, Any]]], list[dict[str, Any]]]:
+    return (
+        {
+            "domestic": _fresh(list(news_data.get("domestic", []))),
+            "world": _fresh(list(news_data.get("world", []))),
+        },
+        _fresh(list(tech_items)),
+    )
+
+
+def evaluate_news_quality(
+    news_data: dict[str, Any],
+    tech_items: list[dict[str, Any]],
+) -> QualityReport:
+    """Accept only fresh, timestamped and de-duplicated source items."""
+    validated_news, validated_tech = validate_news_inputs(news_data, tech_items)
+    statuses = []
+    for label, raw, valid in (
+        ("国内", news_data.get("domestic", []), validated_news["domestic"]),
+        ("国际", news_data.get("world", []), validated_news["world"]),
+        ("技术", tech_items, validated_tech),
+    ):
+        rejected = len(raw) - len(valid)
+        detail = (
+            f"{label}信源没有通过发布时间与去重校验"
+            if not valid else (
+                f"{label}信源有 {rejected} 条过期、无时间或重复内容被排除"
+                if rejected else ""
+            )
+        )
+        statuses.append(SourceStatus(label, len(valid), bool(valid), detail))
+    return QualityReport.evaluate(
+        statuses, minimum_total=3, minimum_healthy_sources=2
+    )
+
 
 def generate_news_takeaway(
-    news_data: Dict[str, Any],
-    tech_items: List[Dict[str, str]],
+    news_data: dict[str, Any],
+    tech_items: list[dict[str, Any]],
 ) -> str:
-    """Generate a source-grounded daily takeaway with the local Agent."""
-    context = json.dumps(
-        {"news": news_data, "technology": tech_items},
-        ensure_ascii=False,
-        default=str,
-    )[:16000]
-    prompt = agent_context.build_prompt(
-        task=(
-            "根据当天新闻和技术项目生成一段不超过三句的中文晨读结论。"
-            "只总结输入中明确出现的事实或趋势，不要使用固定口号、个人身份称谓、"
-            "未经来源支持的判断，也不要凭空推荐某个工具。"
-        ),
-        query="今天这些信息最值得注意的共同趋势是什么？",
-        context=context,
-    )
-    try:
-        result = agent_provider.ask_text("news-takeaway", prompt)
-        if result and not result.startswith("❌"):
-            return result.strip()
-    except Exception as exc:
-        print(f"⚠️ Agent 晨读结论暂不可用: {exc}")
-    return "本次未生成额外晨读结论，请以新闻原文和来源链接为准。"
+    return news_analysis.generate_takeaway(news_data, tech_items)
 
-def build_feishu_news_card(news_data: Dict[str, Any], tech_items: List[Dict[str, str]]) -> Dict[str, Any]:
-    """Construct Apple/Linear aesthetic Feishu news card with full clickable links."""
-    now_str = datetime.datetime.now().strftime("%Y年%m月%d日 %H:%M")
-    
-    # 1. Domestic news
-    dom_lines = []
-    for i, n in enumerate(news_data["domestic"], 1):
-        desc = f"\n   ▸ {n['desc']}" if n.get("desc") else ""
-        link_str = f"\n   ▸ 🔗 [点击阅读全文]({n['link']})" if n.get("link") else ""
-        title_display = f"[{n['title']}]({n['link']})" if n.get("link") else n['title']
-        dom_lines.append(f"**{i}. {title_display}**{desc}{link_str}")
-    dom_text = "\n\n".join(dom_lines)
 
-    # 2. World news (Chinese deep summary + original title + clickable link)
-    world_lines = []
-    for i, n in enumerate(news_data["world"], 1):
-        en_note = f"\n   ▸ 🌐 **外媒原题**：`{n['en_title'][:70]}`" if n.get("en_title") else ""
-        desc = f"\n   ▸ 📝 **中文精读**：{n['desc']}" if n.get("desc") else ""
-        link_str = f"\n   ▸ 🔗 [点击阅读外媒报道原文]({n['link']})" if n.get("link") else ""
-        title_display = f"[{n['title']}]({n['link']})" if n.get("link") else n['title']
-        world_lines.append(f"**{i}. 🌍 {title_display}**{en_note}{desc}{link_str}")
-    world_text = "\n\n".join(world_lines)
+def build_feishu_news_card(
+    news_data: dict[str, Any],
+    tech_items: list[dict[str, Any]],
+    quality: QualityReport | None = None,
+    *,
+    takeaway: str = "",
+) -> dict[str, Any]:
+    """Pure card construction; Agent analysis must happen before this call."""
+    return news_renderer.build_feishu_card(news_renderer.NewsReport(
+        news_data=news_data,
+        tech_items=tech_items,
+        takeaway=takeaway or "本次未生成可回溯的晨读结论，请以原文链接为准。",
+        quality=quality,
+    ))
 
-    # 3. Hardcore Tech
-    tech_lines = []
-    for t in tech_items:
-        tech_lines.append(f"• 🔥 **[{t['name']}]({t['url']})** (`{t['repo']}`)\n   ▸ 🔗 [查看 GitHub 仓库]({t['url']})")
-    tech_text = "\n\n".join(tech_lines)
 
-    # 4. Agent-generated takeaway grounded in today's sources
-    takeaway_text = "💡 **今日晨读结论**：\n" + generate_news_takeaway(news_data, tech_items)
-
-    card = {
-        "msg_type": "interactive",
-        "card": {
-            "config": {"wide_screen_mode": True},
-            "header": {
-                "title": {"tag": "plain_text", "content": "🌍 全球大势与硬核科技雷达 · 晨报"},
-                "template": "blue"
-            },
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"📅 **汇聚时间**：`{now_str}` | **信源状态**：三维权威矩阵实时直通 🟢"
-                    }
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"### 🇨🇳 国内宏观政经大势焦点\n\n{dom_text}"
-                    }
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"### 🌍 国际一手重大局势动态\n\n{world_text}"
-                    }
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"### ⚡ 全球硬核技术与 GitHub 飙升开源\n\n{tech_text}"
-                    }
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": takeaway_text
-                    }
-                },
-                {"tag": "hr"},
-                {
-                    "tag": "note",
-                    "elements": [
-                        {
-                            "tag": "plain_text",
-                            "content": "信源：公开新闻源 / 本地技术摘要（如已配置） / MorningBriefAgent"
-                        }
-                    ]
-                }
-            ]
-        }
-    }
-    return card
-
-def send_feishu(card: Dict[str, Any]) -> bool:
-    """Send card via official openclaw feishu client."""
+def send_feishu(card: dict[str, Any]) -> bool:
     return feishu_gateway.send_card_once(
         card, make_key("feishu-card", "news", datetime.date.today().isoformat())
     )
 
-def record_news_to_obsidian(news_data: Dict[str, Any], tech_items: List[Dict[str, str]]):
-    today_str = datetime.date.today().strftime("%Y-%m-%d")
-    archive_dir = config.TECH_NEWS_DIR
-    if not archive_dir:
-        return None
-    file_path = os.path.join(archive_dir, f"{today_str}-全球大势与科技早报.md")
-    
-    lines = [
-        "---",
-        f'title: "{today_str} 全球大势与科技早报"',
-        f'date: {today_str}',
-        "tags:",
-        "  - global-news",
-        "  - tech-radar",
-        "  - github-trending",
-        'status: "已落地已验证"',
-        "---",
-        "",
-        f"# 🌍 {today_str} 全球大势与科技早报",
-        "",
-        "## 一、国内宏观政经大势",
-        ""
-    ]
-    for n in news_data["domestic"]:
-        lines.append(f"- **{n['title']}**：{n.get('desc', '')}")
-    lines.extend([
-        "",
-        "## 二、国际一手重大局势",
-        ""
-    ])
-    for n in news_data["world"]:
-        en = f" (原题: `{n['en_title'][:60]}`)" if n.get("en_title") else ""
-        link = f" [🔗 阅读外媒原文]({n['link']})" if n.get("link") else ""
-        lines.append(f"- 🌍 **{n['title']}**{en}：{n.get('desc', '')}{link}")
-    lines.extend([
-        "",
-        "## 三、全球一手硬核开源与技术突破",
-        ""
-    ])
-    for t in tech_items:
-        lines.append(f"- 🔥 **[{t['name']}]({t['url']})** (`{t['repo']}`)")
-        
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-    print(f"✅ 全球早报已成功落盘至: {file_path}")
 
-def main():
+def record_news_to_obsidian(
+    news_data: dict[str, Any], tech_items: list[dict[str, Any]]
+) -> str | None:
+    if not config.TECH_NEWS_DIR:
+        return None
+    today = datetime.date.today().isoformat()
+    directory = Path(config.TECH_NEWS_DIR)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{today}-全球大势与科技早报.md"
+    lines = [
+        "---", f'title: "{today} 全球大势与科技早报"', f"date: {today}",
+        "tags: [global-news, tech-radar]", 'status: "source-validated"', "---",
+        "", f"# 🌍 {today} 全球大势与科技早报", "",
+    ]
+    for heading, items in (
+        ("国内宏观政经", news_data.get("domestic", [])),
+        ("国际一手动态", news_data.get("world", [])),
+    ):
+        lines.extend([f"## {heading}", ""])
+        lines.extend(
+            f"- **[{item['title']}]({item.get('link', '')})**：{item.get('desc', '')}"
+            for item in items
+        )
+        lines.append("")
+    lines.extend(["## 技术动态", ""])
+    lines.extend(
+        f"- **[{item['name']}]({item.get('url', '')})**"
+        for item in tech_items
+    )
+    path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"✅ 全球早报已成功落盘至: {path}")
+    return str(path)
+
+
+def main() -> bool:
     print("🚀 启动全球大势与科技雷达早报流水线...")
-    news_data = get_domestic_and_world_news()
-    tech_items = get_tech_radar_news()
-    card = build_feishu_news_card(news_data, tech_items)
-    send_feishu(card)
+    collected_news = get_domestic_and_world_news()
+    collected_tech = get_tech_radar_news()
+    quality = evaluate_news_quality(collected_news, collected_tech)
+    if not quality.ready:
+        print(f"⚠️ 新闻质量门禁未通过：{'；'.join(quality.issues)}")
+        return False
+    news_data, tech_items = validate_news_inputs(collected_news, collected_tech)
+    takeaway = generate_news_takeaway(news_data, tech_items)
+    card = build_feishu_news_card(
+        news_data, tech_items, quality, takeaway=takeaway
+    )
+    if not send_feishu(card):
+        return False
     record_news_to_obsidian(news_data, tech_items)
     print("🎉 全球早报推送全流程顺利完成！")
+    return True
+
 
 if __name__ == "__main__":
     main()

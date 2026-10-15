@@ -36,7 +36,7 @@ from core.integrations.feishu.client import feishu_client
 from core.integrations.sync_outbox import sync_outbox
 from . import feishu_tasks
 from . import plan_generation
-from . import todo_archive, todo_candidates
+from . import todo_analysis, todo_archive, todo_candidates, todo_renderer
 
 
 def delete_feishu_task(task_id: str) -> bool:
@@ -145,15 +145,16 @@ def send_evening_review_prompt() -> bool:
     weekday_str = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"][tomorrow_date.weekday()]
 
     candidates = extract_candidates_from_chat()
-    baseline_todos = get_default_baseline_todos()
-
-    # Merge candidates into todos if any
-    all_todos = list(baseline_todos)
-    for c in candidates:
-        if c not in all_todos:
-            all_todos.append(c)
-
-    default_slots = get_default_schedule_slots(tomorrow_date)
+    analysis = todo_analysis.analyze_candidates(candidates, tomorrow_str)
+    generated_plan = generate_agent_plan(tomorrow_str, analysis)
+    all_todos = list(generated_plan.get("todos", []))
+    default_slots = list(generated_plan.get("schedule_slots", []))
+    if not all_todos:
+        all_todos = [
+            str(item.get("title", "")).strip()
+            for item in analysis.get("valid_items", [])
+            if str(item.get("title", "")).strip()
+        ]
 
     # Save to staged plan
     plan_data = {
@@ -162,52 +163,12 @@ def send_evening_review_prompt() -> bool:
         "todos": all_todos,
         "schedule_slots": default_slots,
         "candidates": candidates,
+        "analysis": analysis,
         "confirmed": False
     }
     save_staged_plan(plan_data)
 
-    # Build prompt card lark_md content
-    todo_text = "📋 **【明日核心待办预排】**\n"
-    for i, t in enumerate(all_todos, 1):
-        is_cand = t in candidates
-        tag = " *(沟通提炼)*" if is_cand else ""
-        todo_text += f"• [ ] **{t}**{tag}\n"
-
-    slot_text = "⏱️ **【明日作息日程预排】**\n"
-    for s in default_slots:
-        slot_text += f"• **{s['name']}**：`{s['start']} ~ {s['end']}` ({s['summary'].split('：')[-1]})\n"
-
-    prompt_body = (
-        f"晚上好！🌙 正在为你预排 **{tomorrow_str} ({weekday_str})** 的待办与日程：\n\n"
-        f"{todo_text}\n"
-        f"{slot_text}\n"
-        "❓ **以上待办与时间盒排期是否合适？**\n\n"
-        "💬 *如需调整时间或事项，可直接在飞书回复：*\n"
-        "• “**把某个时间块改到 18:00**”\n"
-        "• “**加上：明天要处理一件事**”\n"
-        "• “**确认排期**” ➔ 锁定排期并立即写入飞书日历与任务列表！"
-    )
-
-    card = {
-        "config": {"wide_screen_mode": True},
-        "header": {
-            "title": {"tag": "plain_text", "content": f"🌙 明日待办与日程综合预审 ({tomorrow_str})"},
-            "template": "indigo"
-        },
-        "elements": [
-            {
-                "tag": "div",
-                "text": {"tag": "lark_md", "content": prompt_body}
-            },
-            {"tag": "hr"},
-            {
-                "tag": "note",
-                "elements": [
-                    {"tag": "plain_text", "content": "🤖 Agent 统合预审 | 确认后写入本地归档、任务与日历"}
-                ]
-            }
-        ]
-    }
+    card = todo_renderer.build_evening_review_card(plan_data)
     return push_feishu_card(card, f"🌙 明日待办与日程综合预审 ({tomorrow_str})")
 
 def get_weekly_archive_dir(archive_base: str, date_str: str) -> str:

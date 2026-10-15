@@ -307,10 +307,14 @@ FEISHU_ALLOWED_OPEN_IDS=ou_xxx
 
 ```dotenv
 VAULT_ROOT=D:\path\to\your\obsidian-vault
+OBSIDIAN_VAULT_ROOT=D:\path\to\your\obsidian-vault
+SQLITE_DATABASE_PATH=D:\path\to\MorningBriefAgent\data\app.sqlite3
+DEMO_SQLITE_DATABASE_PATH=D:\path\to\MorningBriefAgent\data\demo.sqlite3
 EMAIL_INBOX_DIRS=D:\path\to\mail\inbox;D:\path\to\another\mail\inbox
 TECH_NEWS_DIR=D:\path\to\technical\digest
 NEWS_DOMESTIC_URLS=https://example.com/domestic.json;https://example.com/domestic-live.json
 NEWS_WORLD_URLS=https://example.com/world.rss;https://example.com/another-world.rss
+NEWS_TECH_URLS=https://example.com/technology.rss
 NEWS_FALLBACK_LINK=https://example.com/news
 WECHAT_TOOLS_DIR=D:\path\to\wechat-decrypt
 WECHAT_MSG_DB=D:\path\to\decrypted\message\message_0.db
@@ -319,7 +323,7 @@ WECHAT_CONTACT_DB=D:\path\to\decrypted\contact\contact.db
 
 `EMAIL_INBOX_DIRS` 是邮件 Markdown 收件目录列表，`TECH_NEWS_DIR` 是可选的技术摘要目录，均使用分号分隔（邮件目录可配置多个）。解析器不会假设任何特定的 Vault 子目录名称；未配置时不会扫描对应数据。
 
-`NEWS_DOMESTIC_URLS` 和 `NEWS_WORLD_URLS` 是可替换的新闻源列表，使用分号分隔；新闻抓取器不再把具体 RSS/API 地址写死在源码中。
+`NEWS_DOMESTIC_URLS`、`NEWS_WORLD_URLS` 和 `NEWS_TECH_URLS` 是可替换的新闻源列表，使用分号分隔。未配置时会使用内置公开源；任一来源失败都会反映在卡片的真实信源状态中，质量门禁未通过时不会推送空晨报。
 
 外部写入使用稳定幂等键。默认状态文件为 `data/idempotency.sqlite3`（已被 Git 忽略），也可以显式设置：
 
@@ -355,6 +359,30 @@ CHAT_ARCHIVE_DIR=D:\path\to\knowledge-base\chat-reviews
 
 未配置这些路径时，服务仍可生成 Agent 计划并同步飞书任务/日历，但不会擅自创建或猜测本地知识库目录。
 
+### Obsidian Demo 与本地事实库
+
+项目提供了一个不包含个人数据的示例 Vault：
+`demo/obsidian/`。它只展示目录和 Markdown 组织方式，不会覆盖或搬迁你现有的 Obsidian Vault。
+
+首次启用本地结构化事实库时，在项目根目录运行：
+
+```powershell
+python scripts/init_local_storage.py
+```
+
+默认会创建 `data/app.sqlite3`。原始聊天、邮件、图片和知识库文件仍保留在原位置；
+SQLite 只保存可查询的结构化事实、来源 ID、可信度和审计记录。Agent 生成的估算值
+不能自动伪装成已确认事实。
+
+Demo 数据库使用独立文件，不会读取或污染真实数据：
+
+```powershell
+python scripts/init_local_storage.py --demo
+```
+
+真实数据库是 `data/app.sqlite3`，Demo 数据库是 `data/demo.sqlite3`；
+两者都属于本机运行数据，不会提交到 Git。
+
 ### 本地敏感数据生命周期
 
 聊天数据库、邮件正文、Agent 转录、接收图片、日志和 SQLite
@@ -376,7 +404,7 @@ AGENT_CONTEXT_FILES=D:\private\context\goals.md;D:\private\context\preferences.m
 AGENT_CONTEXT_DIRS=D:\private\context
 ```
 
-`AGENT_CONTEXT_FILES` 和 `AGENT_CONTEXT_DIRS` 使用分号分隔。系统会根据当前任务选择相关片段，并将其交给本地 Agent；源码不会假设你的学校、考试、作息、运动项目、投资目标或社交规则。未配置上下文时，待办和时间块不会凭空填充个人计划。
+`AGENT_CONTEXT_FILES` 和 `AGENT_CONTEXT_DIRS` 使用分号分隔。系统会根据当前任务选择相关片段，并将其交给本地 Agent；两者都未配置时，知识库简报会回退读取 `VAULT_ROOT`。源码不会假设你的学校、考试、作息、运动项目、投资目标或社交规则，待办和时间块也不会凭空填充个人计划。
 
 微信群筛选和联系人排除规则也应保留在本地：
 
@@ -415,6 +443,12 @@ LOCAL_PROXY=http://127.0.0.1:7890
 行情接口默认使用 `https://hq.sinajs.cn`，如需替换为其他兼容数据源，可设置 `MARKET_DATA_URL`。
 
 ## 飞书机器人
+
+机器人收到带有早餐、午餐、晚餐、加餐或训练打卡语义的消息时，会把
+原始描述和最近附带的图片确定性归档到 Obsidian。归档优先使用
+`FITNESS_ARCHIVE_DIR`；未配置时，会在 `VAULT_ROOT` 中查找现有的
+健身训练归档目录。每条飞书消息带有幂等标记，事件重投不会产生重复记录。
+计划咨询类消息（例如“今天健身计划是什么”）不会被误记为完成记录。
 
 前台调试：
 

@@ -244,7 +244,7 @@ def scan_target_group_chats(
                 ).fetchall()
                 if not rows:
                     continue
-                mine, others = [], []
+                messages, mine, others = [], [], []
                 for timestamp, status, local_type, raw_content in rows:
                     icon, text = decode_message_content(raw_content, local_type)
                     if not text:
@@ -255,6 +255,7 @@ def scan_target_group_chats(
                         text,
                         icon,
                     )
+                    messages.append(item)
                     (mine if status == 2 else others).append(item)
                 result.append({
                     "username": username,
@@ -262,6 +263,7 @@ def scan_target_group_chats(
                     "is_spoke": my_count > 0,
                     "my_count": len(mine),
                     "total_count": len(rows),
+                    "messages": messages,
                     "my_messages": mine,
                     "other_messages": others,
                 })

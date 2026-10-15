@@ -15,6 +15,7 @@ import re
 import time
 import datetime
 import logging
+import threading
 from logging.handlers import RotatingFileHandler
 import ctypes
 from typing import Dict, Any, List, Optional
@@ -92,6 +93,7 @@ from core.runtime import config
 from core.integrations.feishu import calendar as feishu_calendar
 from core.agent import agy_bridge
 from services.planning import daily_todo as daily_todo_service
+from services.lifestyle import feishu_archive
 from core.agent import context as agent_context
 from core.integrations.feishu.gateway import feishu_gateway
 from core.runtime.observability import event, traced
@@ -99,7 +101,9 @@ from .replies import (
     build_reply_card as _build_reply_card,
     download_feishu_image as _download_feishu_image,
     reply_feishu_message as _reply_feishu_message,
+    update_feishu_reply as _update_feishu_reply,
 )
+from . import message_processor, progress
 
 VAULT_ROOT = config.VAULT_ROOT
 
@@ -143,6 +147,27 @@ def reply_feishu_message(message_id: str, reply_text: str, title: str = "🤖 AG
         feishu_gateway, message_id, reply_text, title, template
     )
 
+def update_feishu_reply(message_id: str, reply_text: str, title: str = "🤖 AGY 智能协同助手", template: str = "blue"):
+    return _update_feishu_reply(
+        feishu_gateway, message_id, reply_text, title, template
+    )
+
+def animate_thinking_reply(
+    reply_message_id: str,
+    stop_event: threading.Event,
+) -> None:
+    progress.animate(
+        reply_message_id, stop_event, update_feishu_reply, logger=logger
+    )
+
+
+def stop_thinking_animation(
+    stop_event: Optional[threading.Event],
+    animation_thread: Optional[threading.Thread],
+) -> None:
+    progress.stop(stop_event, animation_thread)
+
+
 def gather_agent_context(query: str) -> str:
     """Collect only user-configured context; never assume a personal domain."""
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -152,47 +177,22 @@ def gather_agent_context(query: str) -> str:
 @traced(logger, "server.process_message")
 def process_message_async(sender_open_id: str, user_text: str, msg_id: str):
     """Worker task executed in thread pool to prevent blocking WebSocket loop."""
-    try:
-        # 1. Fast-track todo command & evening review confirmation
-        event(logger, "message_received", correlation_id=msg_id, message_id=msg_id)
-        todo_reply = daily_todo_service.handle_todo_intent(user_text)
-        if todo_reply:
-            logger.info(f"⚡ [待办意图快速拦截命中] 立即响应待办指令: {user_text}")
-            reply_feishu_message(msg_id, todo_reply, title="📋 待办事项实时处理", template="indigo")
-            return
-
-        # 2. Check for attached / recently buffered images for multimodal visual cognition
-        attached_images = get_and_clear_user_images(sender_open_id)
-        if attached_images:
-            img_bullets = "\n".join([f"- file:///{p.replace(os.sep, '/')}" for p in attached_images])
-            user_text = (
-                f"{user_text}\n\n"
-                f"【用户发送的多模态图片附件】：\n"
-                f"{img_bullets}\n"
-                f"⚠️ 请务必使用 view_file 工具直接打开并查看上述本地图片文件，进行深入的多模态视觉识别与理解，结合图片中的真实细节（如餐食搭配、食材、文字、图表等）为用户提供专业细致的解答！"
-            )
-            logger.info(f"🖼️ [多模态视觉上下文挂载] 成功关联 {len(attached_images)} 张图片至认知推理")
-
-        # 3. Immediately notify user with thinking status card (Zero waiting anxiety)
-        reply_feishu_message(
-            msg_id, 
-            "⏳ **正在分析你的问题与已配置的本地知识库，回复生成中...**\n• 本地智能体推理中\n• 仅使用当前请求与授权上下文",
-            title="🤖 AGY 智能协同助手 (思考中...)", 
-            template="turquoise"
-        )
-
-        # 4. Gather live context
-        context = gather_agent_context(user_text)
-        
-        # 5. Call Native Google Antigravity (AGY) Engine with streaming listener
-        logger.info(f"🧠 [原生 AGY 认知引擎激活] 正在执行原生流式推理 (MsgID: {msg_id})...")
-        reply_text = agy_bridge.ask_native_agy(sender_open_id, user_text, context)
-        logger.info(f"📤 [AGY 原生回答就绪] {reply_text[:100]}...")
-        
-        # 6. Deliver final high-aesthetic response card back to Feishu
-        reply_feishu_message(msg_id, reply_text, title="🤖 AGY 智能协同助手", template="blue")
-    except Exception as e:
-        logger.error(f"❌ 异步处理消息任务异常 (MsgID: {msg_id}): {e}", exc_info=True)
+    message_processor.process_message(
+        sender_open_id,
+        user_text,
+        msg_id,
+        todo_handler=daily_todo_service.handle_todo_intent,
+        get_images=get_and_clear_user_images,
+        archive_lifestyle=feishu_archive.archive_lifestyle_message,
+        reply=reply_feishu_message,
+        update=update_feishu_reply,
+        gather_context=gather_agent_context,
+        ask_agent=agy_bridge.ask_native_agy,
+        animate=animate_thinking_reply,
+        stop_animation=stop_thinking_animation,
+        event_fn=event,
+        logger=logger,
+    )
 
 def extract_feishu_user_text(content_raw: str) -> str:
     """Extract plain text from Feishu message whether text, post (rich text), or json."""

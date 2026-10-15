@@ -42,7 +42,7 @@ def build_reply_card(
 ) -> dict:
     now_str = datetime.datetime.now().strftime("%H:%M:%S")
     return {
-        "config": {"wide_screen_mode": True},
+        "config": {"wide_screen_mode": True, "update_multi": True},
         "header": {
             "template": template,
             "title": {"tag": "plain_text", "content": title},
@@ -64,14 +64,35 @@ def reply_feishu_message(
     reply_text: str,
     title: str = "🤖 AGY 智能协同助手",
     template: str = "blue",
-) -> bool:
+) -> str | None:
     card = build_reply_card(reply_text, title=title, template=template)
-    if gateway.reply_card(message_id, card):
+    reply_message_id = gateway.reply_card(message_id, card)
+    if reply_message_id:
         logger.info("reply_card_succeeded message_id=%s", message_id)
-        return True
+        return reply_message_id if isinstance(reply_message_id, str) else None
     logger.warning("reply_card_failed fallback=text message_id=%s", message_id)
-    if gateway.reply_text(message_id, reply_text):
+    text_message_id = gateway.reply_text(message_id, reply_text)
+    if text_message_id:
         logger.info("reply_text_succeeded message_id=%s", message_id)
-        return True
+        return text_message_id if isinstance(text_message_id, str) else None
     logger.error("reply_failed message_id=%s", message_id)
-    return False
+    return None
+
+
+def update_feishu_reply(
+    gateway: FeishuGateway,
+    reply_message_id: str,
+    reply_text: str,
+    title: str = "🤖 AGY 智能协同助手",
+    template: str = "blue",
+) -> bool:
+    """Update one bot reply card so progress and final output share a message."""
+    if not reply_message_id:
+        return False
+    card = build_reply_card(reply_text, title=title, template=template)
+    updated = gateway.update_card(reply_message_id, card)
+    if updated:
+        logger.info("reply_card_updated message_id=%s", reply_message_id)
+    else:
+        logger.warning("reply_card_update_failed message_id=%s", reply_message_id)
+    return bool(updated)

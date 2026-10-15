@@ -14,6 +14,7 @@ import time
 import subprocess
 import logging
 import uuid
+from dataclasses import dataclass
 from typing import Optional, Tuple
 
 logger = logging.getLogger("AGYBridge")
@@ -30,6 +31,106 @@ AGENTAPI_EXE = config.AGENTAPI_EXE
 BRAIN_DIR = config.AGY_BRAIN_DIR
 
 import re
+
+_BACKGROUND_TASK_ID_RE = re.compile(
+    r"(?P<task_id>[a-zA-Z0-9-]+/task-\d+)",
+    re.IGNORECASE,
+)
+
+
+@dataclass(frozen=True)
+class TranscriptSnapshot:
+    """Current completion-related state for one requested transcript segment."""
+
+    latest_step: int
+    candidate_content: Optional[str]
+    candidate_step: int
+    active_task_ids: Tuple[str, ...]
+
+    @property
+    def candidate_is_latest(self) -> bool:
+        return (
+            self.candidate_content is not None
+            and self.candidate_step == self.latest_step
+        )
+
+
+def read_transcript_snapshot(
+    transcript_file: str,
+    min_step: int = 0,
+) -> TranscriptSnapshot:
+    """Read a request-scoped transcript snapshot without trusting message DONE alone."""
+    latest_step = min_step - 1
+    candidate_content = None
+    candidate_step = min_step - 1
+    active_task_ids = set()
+
+    if not os.path.exists(transcript_file):
+        return TranscriptSnapshot(
+            latest_step=latest_step,
+            candidate_content=None,
+            candidate_step=candidate_step,
+            active_task_ids=(),
+        )
+
+    try:
+        with open(transcript_file, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except (TypeError, ValueError):
+                    # The writer may be in the middle of appending the last JSONL row.
+                    continue
+
+                try:
+                    step_idx = int(data.get("step_index", -1))
+                except (TypeError, ValueError):
+                    continue
+                if step_idx < min_step:
+                    continue
+
+                latest_step = max(latest_step, step_idx)
+                msg_type = data.get("type")
+                status = str(data.get("status") or "").upper()
+                content = data.get("content")
+                content_text = content if isinstance(content, str) else ""
+                task_ids = {
+                    match.group("task_id")
+                    for match in _BACKGROUND_TASK_ID_RE.finditer(content_text)
+                }
+
+                if status == "RUNNING":
+                    active_task_ids.update(task_ids)
+                if "finished with result" in content_text.lower():
+                    active_task_ids.difference_update(task_ids)
+
+                tool_calls = data.get("tool_calls")
+                if (
+                    msg_type == "PLANNER_RESPONSE"
+                    and status == "DONE"
+                    and content_text.strip()
+                    and not tool_calls
+                    and step_idx >= candidate_step
+                ):
+                    candidate_content = content_text.strip()
+                    candidate_step = step_idx
+    except OSError as e:
+        logger.error(f"Error reading transcript {transcript_file}: {e}")
+
+    return TranscriptSnapshot(
+        latest_step=latest_step,
+        candidate_content=candidate_content,
+        candidate_step=candidate_step,
+        active_task_ids=tuple(sorted(active_task_ids)),
+    )
+
+
+def get_highest_transcript_step(transcript_file: str) -> int:
+    """Return the highest step of any row, including tools and empty planner rows."""
+    return read_transcript_snapshot(transcript_file, min_step=0).latest_step
 
 def run_silent(cmd, **kwargs) -> subprocess.CompletedProcess:
     """Execute command silently with guaranteed zero console window popup on Windows."""
@@ -138,66 +239,85 @@ def get_latest_response_from_transcript(transcript_file: str, min_step: int = 0)
     Excludes intermediate tool-calling steps to ensure the final answer is ready.
     Returns (content, step_index).
     """
-    if not os.path.exists(transcript_file):
-        return None, min_step
-        
-    latest_content = None
-    latest_step = min_step
-    
-    try:
-        with open(transcript_file, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    data = json.loads(line)
-                except Exception:
-                    continue
-                    
-                step_idx = data.get("step_index", 0)
-                msg_type = data.get("type")
-                status = data.get("status")
-                content = data.get("content")
-                tool_calls = data.get("tool_calls")
-                
-                # Must be a completed PLANNER_RESPONSE with actual content and not in intermediate tool execution
-                if msg_type == "PLANNER_RESPONSE" and status == "DONE" and content and not tool_calls and step_idx >= min_step:
-                    latest_content = content
-                    latest_step = step_idx
-    except Exception as e:
-        logger.error(f"Error reading transcript {transcript_file}: {e}")
-        
-    return latest_content, latest_step
+    snapshot = read_transcript_snapshot(transcript_file, min_step=min_step)
+    if (
+        not snapshot.candidate_content
+        or not snapshot.candidate_is_latest
+        or snapshot.active_task_ids
+    ):
+        return None, max(min_step, snapshot.candidate_step)
+    return snapshot.candidate_content, snapshot.candidate_step
 
-def wait_for_agy_response(conv_id: str, start_step: int = 0, max_wait_sec: int = 600) -> str:
+
+def wait_for_agy_response(
+    conv_id: str,
+    start_step: int = 0,
+    max_wait_sec: int = 600,
+    settle_sec: float = 3.0,
+    poll_interval_sec: float = 1.2,
+) -> str:
     """
     Streamingly listen to AGY Brain transcript until a finished user-facing PLANNER_RESPONSE appears.
     Zero premature timeouts - faithfully tracks the AI thinking process until complete.
     """
     transcript_file = os.path.join(BRAIN_DIR, conv_id, ".system_generated", "logs", "transcript.jsonl")
-    start_time = time.time()
+    start_time = time.monotonic()
     
     logger.info(f"⏳ 正在流式监听 AGY 专属会话 ({conv_id}) 日志: 起始 step {start_step}...")
     
     poll_count = 0
-    while time.time() - start_time < max_wait_sec:
-        content, step = get_latest_response_from_transcript(transcript_file, min_step=start_step)
-        if content and content.strip():
-            # Wait brief moment to guarantee full content flush
-            time.sleep(1.0)
-            newer_content, _ = get_latest_response_from_transcript(transcript_file, min_step=step)
-            final_ans = (newer_content or content).strip()
-            logger.info(f"🎯 成功流式捕获 AGY 最终回答 (step: {step}, 耗时: {int(time.time() - start_time)}s)")
-            return final_ans
-            
+    candidate_key = None
+    candidate_since = None
+    while time.monotonic() - start_time < max_wait_sec:
+        snapshot = read_transcript_snapshot(
+            transcript_file,
+            min_step=start_step,
+        )
+        content = snapshot.candidate_content
+        is_ready_candidate = bool(
+            content
+            and snapshot.candidate_is_latest
+            and not snapshot.active_task_ids
+        )
+
+        if is_ready_candidate:
+            current_key = (snapshot.candidate_step, content)
+            if current_key != candidate_key:
+                candidate_key = current_key
+                candidate_since = time.monotonic()
+            elif time.monotonic() - candidate_since >= max(0.0, settle_sec):
+                elapsed = int(time.monotonic() - start_time)
+                logger.info(
+                    "🎯 成功确认 AGY 会话级最终回答 "
+                    "(step=%s, 稳定=%.1fs, 耗时=%ss)",
+                    snapshot.candidate_step,
+                    settle_sec,
+                    elapsed,
+                )
+                return content.strip()
+        else:
+            candidate_key = None
+            candidate_since = None
+
         poll_count += 1
         if poll_count % 15 == 0:
-            logger.info(f"⏳ 仍在流式持续监听 AGY 深度思考中... (已耗时 {int(time.time() - start_time)}s)")
-            
-        time.sleep(1.2)
-        
-    return "🤖 [AGY 认知引擎] 思考任务仍在进行中，请稍后在群中查看最新答复。"
+            logger.info(
+                "⏳ 仍在持续监听 AGY 深度思考 "
+                "(已耗时=%ss, 最新step=%s, 后台任务=%s)",
+                int(time.monotonic() - start_time),
+                snapshot.latest_step,
+                len(snapshot.active_task_ids),
+            )
+
+        time.sleep(max(0.01, poll_interval_sec))
+
+    logger.error(
+        "AGY response wait timed out conversation=%s start_step=%s elapsed=%ss",
+        conv_id,
+        start_step,
+        int(time.monotonic() - start_time),
+    )
+    return "❌ AGY 思考任务等待超时，未将阶段性进度误作最终答复。请稍后重试。"
 
 FEISHU_FORMATTING_RULE = """【飞书移动端卡片专属排版铁律与安全约束】：
 1. 严禁使用 Markdown 表格 (| 列1 | 列2 |)，飞书卡片不支持渲染表格；请统一使用 Emoji 结构化列表或键值对呈现。
@@ -228,7 +348,7 @@ def _ask_native_agy_locked(
     full_prompt = "\n\n".join(prompt_parts)
     
     transcript_file = os.path.join(BRAIN_DIR, conv_id, ".system_generated", "logs", "transcript.jsonl")
-    _, highest_step = get_latest_response_from_transcript(transcript_file, min_step=0)
+    highest_step = get_highest_transcript_step(transcript_file)
     
     try:
         logger.info(

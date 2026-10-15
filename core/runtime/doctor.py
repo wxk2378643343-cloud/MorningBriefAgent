@@ -28,9 +28,14 @@ def run_checks() -> list[str]:
         _check_path("Agent executable", config.AGENTAPI_EXE),
         _check_path("Agent brain directory", config.AGY_BRAIN_DIR),
         _check_path("Configured email directories", ";".join(config.EMAIL_INBOX_DIRS)),
+        _check_path("Knowledge base root", config.VAULT_ROOT, must_exist=True),
         _check_path("Todo output", config.TODAY_TODO_PATH),
         _check_path("Review daily output", config.REVIEW_DAILY_DIR),
-        _check_path("News world sources", ";".join(config.NEWS_WORLD_URLS)),
+        (
+            "[OK] News sources: 使用自定义来源"
+            if config.NEWS_DOMESTIC_URLS or config.NEWS_WORLD_URLS
+            else "[OK] News sources: 使用内置公开来源"
+        ),
     ]
     if config.FEISHU_APP_ID and config.FEISHU_APP_SECRET:
         checks.append("[OK] Feishu credentials: 已配置（值不显示）")

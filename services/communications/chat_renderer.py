@@ -15,6 +15,27 @@ def build_feishu_card(
     groups = analysis["group_summaries"]
     total_messages = sum(item["total_count"] for item in detailed + compact)
     ignored_groups = total_all_groups - len(groups)
+    planned = analysis.get("planned_batches", analysis.get("analysis_batches", 1))
+    successful = analysis.get("successful_batches", planned)
+    failed = analysis.get("failed_batches", max(0, planned - successful))
+    analyzed = analysis.get("analyzed_message_count")
+    source_count = analysis.get("source_message_count")
+    if failed:
+        agent_coverage = (
+            f"⚠️ **Agent 覆盖不完整**：成功 {successful}/{planned} 批"
+            + (
+                f"，已分析 {analyzed}/{source_count} 条入选消息"
+                if analyzed is not None and source_count is not None else ""
+            )
+        )
+    else:
+        agent_coverage = (
+            f"✅ **Agent 覆盖**：成功处理 {successful}/{planned} 批"
+            + (
+                f"，共 {analyzed} 条入选消息"
+                if analyzed is not None else ""
+            )
+        )
     elements = [{
         "tag": "div",
         "text": {
@@ -22,10 +43,12 @@ def build_feishu_card(
             "content": (
                 f"**📊 社交与沟通全景概览 ({date_str})**\n"
                 f"• **私聊全员覆盖**：共与 **{len(detailed) + len(compact)} 位联系人** "
-                f"产生交流 (累计 {total_messages} 条消息，100%全量呈现)\n"
+                f"产生交流 (累计 {total_messages} 条消息，完整计数、重点摘录)\n"
                 f"• **精选重点群聊**：仅整理 **{len(groups)} 个精选群** "
                 f"(本人发言群 {sum(1 for item in groups if item['is_spoke'])} 个)\n"
-                f"• **信息防噪专注度**：彻底屏蔽过滤 **{ignored_groups} 个无关群聊**"
+                f"• **信息防噪专注度**：过滤 **{ignored_groups} 个非目标群聊；"
+                f"完整入选记录写入本地归档\n"
+                f"• {agent_coverage}"
             ),
         },
     }, {"tag": "hr"}]
@@ -58,7 +81,7 @@ def build_feishu_card(
 
     elements.append({"tag": "hr"})
     if compact:
-        lines = [f"### 💬 日常轻量联络清单 (全量留痕 < 5条，共 {len(compact)} 人)", ""]
+        lines = [f"**【💬 日常轻量联络清单】**（< 5条，共 {len(compact)} 人）", ""]
         lines.extend(
             f"• **【{person['name']}】** ({person['time_span']} | 来往 "
             f"{person['total_count']} 条)：{person['topics']}"
@@ -71,7 +94,7 @@ def build_feishu_card(
 
     elements.append({
         "tag": "div",
-        "text": {"tag": "lark_md", "content": "### 👥 精选重点群聊动态与发言"},
+        "text": {"tag": "lark_md", "content": "**【👥 精选重点群聊动态与发言】**"},
     })
     for group in groups:
         lines = [

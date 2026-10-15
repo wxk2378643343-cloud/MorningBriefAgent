@@ -28,17 +28,24 @@ def get_default_schedule_slots(target_date: date) -> List[Dict[str, str]]:
     return []
 
 
-def generate_agent_plan(target_date: str) -> Dict[str, Any]:
+def generate_agent_plan(
+    target_date: str,
+    analysis: Dict[str, Any] | None = None,
+) -> Dict[str, Any]:
     """Ask the local agent for a validated plan based on configured context."""
+    analysis_context = json.dumps(analysis or {}, ensure_ascii=False, indent=2)
     prompt = agent_context.build_prompt(
         task=(
-            "为指定日期生成一个可执行计划，只能使用本地资料中明确存在的目标和约束。"
+            "你是计划编排器。为指定日期生成一个可执行计划，只能使用上一步事实分析"
+            "中 valid_items 和 constraints 明确存在的目标与约束。"
             "输出严格 JSON：{\"todos\": [\"...\"], \"schedule_slots\": "
             "[{\"name\":\"...\",\"start\":\"HH:MM\",\"end\":\"HH:MM\","
             "\"summary\":\"...\",\"desc\":\"...\"}]}。资料不足时返回空数组，"
-            "不要自行发明学习、运动、工作或生活目标。"
+            "不要自行发明学习、运动、工作、生活目标或时间。没有明确时间约束的事项"
+            "可以进入 todos，但不得强行生成 schedule_slots。"
         ),
         query=f"请为 {target_date} 生成计划。",
+        context=f"【上一步事实分析】\n{analysis_context}",
     )
     try:
         data = agent_provider.ask_json("daily-plan", prompt)

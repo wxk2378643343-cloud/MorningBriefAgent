@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 
 def _csv_env(name: str) -> tuple[str, ...]:
@@ -16,26 +16,35 @@ def _csv_env(name: str) -> tuple[str, ...]:
     return tuple(item.strip() for item in raw.split(",") if item.strip())
 
 
-def _candidate_files() -> Iterable[Path]:
+def _candidate_files(fallback_dirs: Iterable[str | Path] = ()) -> Iterable[Path]:
     configured_files = _csv_env("AGENT_CONTEXT_FILES")
-    if configured_files:
-        yield from (Path(item) for item in configured_files)
-        return
-    for directory_name in _csv_env("AGENT_CONTEXT_DIRS"):
+    yield from (Path(item) for item in configured_files)
+
+    configured_dirs = list(_csv_env("AGENT_CONTEXT_DIRS"))
+    if not configured_files and not configured_dirs:
+        configured_dirs.extend(str(item) for item in fallback_dirs if str(item).strip())
+
+    for directory_name in configured_dirs:
         directory = Path(directory_name)
         if directory.is_dir():
             yield from directory.rglob("*.md")
 
 
-def collect_context(query: str = "", max_files: int = 8, max_chars: int = 12000) -> str:
-    """Collect a bounded, query-relevant snapshot from local Markdown files."""
+def collect_context_documents(
+    query: str = "",
+    max_files: int = 8,
+    max_chars: int = 12000,
+    *,
+    fallback_dirs: Iterable[str | Path] = (),
+) -> list[dict[str, Any]]:
+    """Collect bounded source documents while retaining traceable metadata."""
     query_terms = {
         term.lower()
         for term in query.replace("/", " ").replace("\\", " ").split()
         if len(term) >= 2
     }
     ranked: list[tuple[int, float, Path]] = []
-    for path in _candidate_files():
+    for path in _candidate_files(fallback_dirs):
         if not path.is_file():
             continue
         try:
@@ -46,9 +55,10 @@ def collect_context(query: str = "", max_files: int = 8, max_chars: int = 12000)
             continue
     ranked.sort(key=lambda item: (item[0], item[1]), reverse=True)
 
-    chunks: list[str] = []
+    documents: list[dict[str, Any]] = []
     used = 0
-    for _, _, path in ranked[:max_files]:
+    per_file_limit = max(800, max_chars // max(1, max_files))
+    for score, modified_at, path in ranked[:max_files]:
         try:
             text = path.read_text(encoding="utf-8", errors="ignore").strip()
         except OSError:
@@ -58,9 +68,24 @@ def collect_context(query: str = "", max_files: int = 8, max_chars: int = 12000)
         remaining = max_chars - used
         if remaining <= 0:
             break
-        excerpt = text[:remaining]
-        chunks.append(f"【来源：{path}】\n{excerpt}")
+        excerpt = text[:min(remaining, per_file_limit)]
+        documents.append({
+            "path": str(path),
+            "excerpt": excerpt,
+            "score": score,
+            "modified_at": modified_at,
+        })
         used += len(excerpt)
+    return documents
+
+
+def collect_context(query: str = "", max_files: int = 8, max_chars: int = 12000) -> str:
+    """Collect a bounded, query-relevant snapshot from local Markdown files."""
+    documents = collect_context_documents(query, max_files, max_chars)
+    chunks = [
+        f"【来源：{document['path']}】\n{document['excerpt']}"
+        for document in documents
+    ]
     return "\n\n".join(chunks)
 
 

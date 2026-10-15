@@ -40,6 +40,13 @@ load_env_file()
 
 # Base paths
 VAULT_ROOT = os.getenv("VAULT_ROOT", str(PROJECT_ROOT / "vault"))
+OBSIDIAN_VAULT_ROOT = os.getenv("OBSIDIAN_VAULT_ROOT", VAULT_ROOT)
+SQLITE_DATABASE_PATH = os.getenv(
+    "SQLITE_DATABASE_PATH", str(PROJECT_ROOT / "data" / "app.sqlite3")
+)
+DEMO_SQLITE_DATABASE_PATH = os.getenv(
+    "DEMO_SQLITE_DATABASE_PATH", str(PROJECT_ROOT / "data" / "demo.sqlite3")
+)
 WECHAT_TOOLS_DIR = os.getenv("WECHAT_TOOLS_DIR", "")
 WECHAT_MSG_DB = os.getenv("WECHAT_MSG_DB", "")
 WECHAT_CONTACT_DB = os.getenv("WECHAT_CONTACT_DB", "")
@@ -58,6 +65,7 @@ EMAIL_INBOX_DIRS = _csv("EMAIL_INBOX_DIRS")
 TECH_NEWS_DIR = os.getenv("TECH_NEWS_DIR", "")
 NEWS_DOMESTIC_URLS = _csv("NEWS_DOMESTIC_URLS")
 NEWS_WORLD_URLS = _csv("NEWS_WORLD_URLS")
+NEWS_TECH_URLS = _csv("NEWS_TECH_URLS")
 NEWS_FALLBACK_LINK = os.getenv("NEWS_FALLBACK_LINK", "")
 STUDY_TRACKER_PATH = os.getenv("STUDY_TRACKER_PATH", "")
 TODAY_TODO_PATH = os.getenv("TODAY_TODO_PATH", "")

@@ -53,7 +53,7 @@ def archive_to_obsidian(
             "",
         ])
         if person.get("all_messages"):
-            lines.append("#### 💬 全量对话时间流流水")
+            lines.append("#### 💬 全量对话时间流")
             lines.extend(
                 f"- {message[3] if len(message) > 3 else '💬'} "
                 f"`[{message[0]}]` **{message[1]}**：{message[2]}"
@@ -62,12 +62,20 @@ def archive_to_obsidian(
             lines.append("")
     if compact:
         lines.extend(["## 三、日常轻量联络清单 (全量留痕 < 5条)", ""])
-        lines.extend(
-            f"- **【{person['name']}】** (`{person['time_span']}` | "
-            f"来往 {person['total_count']} 条)：{person['topics']}"
-            for person in compact
-        )
-        lines.append("")
+        for person in compact:
+            lines.extend([
+                f"### 【{person['name']}】 (`{person['time_span']}` | "
+                f"来往 {person['total_count']} 条)",
+                f"- **核心议题**：{person['topics']}",
+            ])
+            if person.get("all_messages"):
+                lines.append("#### 💬 全量对话时间流")
+                lines.extend(
+                    f"- {message[3] if len(message) > 3 else '💬'} "
+                    f"`[{message[0]}]` **{message[1]}**：{message[2]}"
+                    for message in person["all_messages"]
+                )
+            lines.append("")
     lines.extend(["## 四、精选重点群聊动态", ""])
     for group in analysis["group_summaries"]:
         lines.extend([
@@ -81,6 +89,13 @@ def archive_to_obsidian(
                 f"  - {message[3] if len(message) > 3 else '💬'} "
                 f"`[{message[0]}]` {message[2]}"
                 for message in group["my_messages"]
+            )
+        if group.get("all_messages"):
+            lines.append("#### 💬 入选群聊全量对话时间流")
+            lines.extend(
+                f"- {message[3] if len(message) > 3 else '💬'} "
+                f"`[{message[0]}]` **{message[1]}**：{message[2]}"
+                for message in group["all_messages"]
             )
         lines.extend([f"- **复盘反思**：{group['reflection']}", ""])
     lines.extend([
