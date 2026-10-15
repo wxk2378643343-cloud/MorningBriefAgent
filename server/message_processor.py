@@ -117,7 +117,6 @@ def process_message(
                 f"“{archive_result['category']}”记录。"
                 "请告知用户已归档，不要重复写入。"
             )
-
         progress_message_id = reply(
             msg_id,
             "⏳ **正在读取你的问题与已授权资料…**\n\n当前阶段：资料采集",
@@ -181,7 +180,7 @@ def process_message(
             # the Agent answer, so the user is alerted to open the final card.
             reply(
                 msg_id,
-                "✅ 处理完成，最终结果已更新到上一张卡片。",
+                "✅ 已完成，请查看上一条结果。",
                 title="🤖 AGY 智能协同助手 · 已完成",
                 template="green",
             )
@@ -207,3 +206,4 @@ def process_message(
                 title="🤖 AGY 智能协同助手 · 处理失败",
                 template="red",
             )
+

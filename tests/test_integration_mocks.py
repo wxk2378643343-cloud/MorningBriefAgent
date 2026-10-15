@@ -665,7 +665,7 @@ class MockIntegrationTests(unittest.TestCase):
             )
 
         self.assertEqual(reply_message.call_count, 2)
-        self.assertIn("处理完成", reply_message.call_args_list[-1].args[1])
+        self.assertIn("已完成", reply_message.call_args_list[-1].args[1])
         self.assertEqual(update_reply.call_count, 2)
         self.assertEqual(update_reply.call_args_list[-1].args[0], "om-progress")
         final_reply = update_reply.call_args_list[-1].args[1]
