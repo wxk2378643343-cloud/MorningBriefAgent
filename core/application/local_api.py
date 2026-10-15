@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from core.agent.discovery import discovery_snapshot
-from storage.credentials import set_secret
+from storage.credentials import get_secret, set_secret
 from storage.data_sources import (
     inspect_sqlite,
     list_files,
@@ -133,6 +133,14 @@ class _Handler(BaseHTTPRequestHandler):
             except (ValueError, RuntimeError, TypeError) as exc:
                 self._send_json({"error": "credential_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
+        if self.path.startswith("/api/v1/providers/") and self.path.endswith("/test"):
+            provider = self.path.split("/")[4]
+            configured = bool(get_secret(f"provider:{provider}:api_key"))
+            self._send_json(
+                {"provider": provider, "ok": configured, "message": "凭据已保存" if configured else "未配置 API Key"},
+                HTTPStatus.OK if configured else HTTPStatus.BAD_REQUEST,
+            )
+            return
         if self.path.startswith("/api/v1/channels/") and self.path.endswith("/credentials"):
             channel = self.path.split("/")[4]
             try:
@@ -144,6 +152,14 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json({"channel": channel, "configured": True})
             except (ValueError, RuntimeError, TypeError) as exc:
                 self._send_json({"error": "credential_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path.startswith("/api/v1/channels/") and self.path.endswith("/test"):
+            channel = self.path.split("/")[4]
+            configured = bool(get_secret(f"channel:{channel}:app_id") and get_secret(f"channel:{channel}:app_secret"))
+            self._send_json(
+                {"channel": channel, "ok": configured, "message": "凭据已保存" if configured else "未配置飞书 App ID 或 Secret"},
+                HTTPStatus.OK if configured else HTTPStatus.BAD_REQUEST,
+            )
             return
         if self.path == "/api/v1/profile":
             try:

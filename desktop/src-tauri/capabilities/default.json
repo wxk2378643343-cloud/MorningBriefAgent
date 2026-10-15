@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default local desktop permissions",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }
