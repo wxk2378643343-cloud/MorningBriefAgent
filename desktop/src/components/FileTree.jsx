@@ -33,7 +33,7 @@ function buildTree(files) {
 export default function FileTree({ files, selected, onSelect }) {
   const tree = useMemo(() => buildTree(files), [files]);
   return <div className="managed-file-tree">
-    <Tree data={tree} width="100%" height={420} rowHeight={34} indent={18} openByDefault>
+    <Tree data={[tree]} width="100%" height={420} rowHeight={34} indent={18} openByDefault>
       {({ node, style }) => <button type="button" className={`managed-tree-row ${selected === node.id ? "selected" : ""}`} style={style} onClick={() => {
         if (node.data.kind === "file") onSelect(node.data.file[4]);
         else node.toggle();
