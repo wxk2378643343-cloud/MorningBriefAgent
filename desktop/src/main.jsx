@@ -270,9 +270,59 @@ function DatabaseWorkspace() {
   ];
   return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Read only</span><h2>数据库</h2><p>只读查看结构化事实、Agent 用量和同步状态。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadDatabase}><RefreshCw size={15} />刷新</button><span className="db-badge"><Database size={14} /> {databaseFile?.file_name ?? "app.sqlite3"}</span></div></div><div className="file-layout database-layout"><aside className="file-tree"><strong>数据表</strong>{tables.map((table) => <button className={selected === table ? "tree-selected" : ""} key={table} onClick={() => setSelected(table)}><Database size={14} />{table}</button>)}<div className="tree-note"><span className="pulse" /> {live ? "已读取本地 SQLite" : "演示模式：未连接本地数据库"}<br />只读模式</div></aside><div className="db-content"><div className="db-title"><div><span className="eyebrow">Table</span><h3>{selected || "未选择数据表"}</h3></div><span className="row-count">最近 50 条</span></div><table><thead><tr>{columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{rows.map((row, index) => <tr key={row.id ?? index}>{columns.map((column) => <td key={column}>{String(row[column] ?? "")}</td>)}</tr>)}</tbody></table></div><aside className="file-detail"><span className="eyebrow">Database guard</span><h3>只读查看器</h3><p>桌面端不会直接修改业务表，避免绕过校验、幂等和同步流程。</p><div className="detail-line"><span>数据库</span><strong>{databaseFile?.file_name ?? "本地 SQLite"}</strong></div><div className="detail-line"><span>当前表</span><strong>{selected || "—"}</strong></div></aside></div></section>;
 }
-function WorkspaceStep({ onComplete }) { return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>应用会在本机创建数据库、知识库、日志、附件和对话目录，不会覆盖已有文件。</p><div className="path-row"><code>用户目录 / MorningBriefAgent</code><button className="secondary">选择位置</button></div><button className="primary" onClick={onComplete}>初始化本地工作区 <ChevronRight size={16} /></button></div></div>; }
-function ProviderStep({ providers, selected, onSelect, onComplete }) { return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择你的 AI Provider</h4><p>可以使用 API，也可以使用本地 Agent 进程。密钥不会显示在界面或日志中。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div><button className="primary" onClick={onComplete}>保存 Provider 选择 <ChevronRight size={16} /></button></div></div>; }
-function ChannelStep({ channels, selected, onSelect, onComplete }) { const channel = channels.find((item) => item.name === selected); return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>第一阶段先支持飞书。后续可以增加 Telegram、企业微信、邮件或 Webhook。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => onSelect("feishu")}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channel?.configured ? "已配置" : "等待配置 App ID 和 Secret"}</small></span><Settings2 size={16} /></button><button className="primary" onClick={onComplete}>保存渠道设置 <ChevronRight size={16} /></button></div></div>; }
-function ProfileStep({ onComplete }) { return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>告诉 Agent 你是谁、做什么、关注什么，以及你希望它如何帮助你。之后可以随时修改。</p><div className="profile-grid"><label>我的工作<textarea placeholder="例如：我负责……" /></label><label>当前目标<textarea placeholder="例如：近期重点是……" /></label></div><button className="primary" onClick={onComplete}>完成设置，进入工作台 <ChevronRight size={16} /></button></div></div>; }
+function WorkspaceStep({ onComplete }) {
+  const [root, setRoot] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch(apiUrl("/api/v1/workspace/initialize"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ root_path: root }) });
+      if (!response.ok) throw new Error("workspace");
+      onComplete();
+    } catch { setBusy(false); }
+  };
+  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>创建本地工作区</h4><p>选择一个本地目录，应用会创建数据库、知识库、日志、附件和对话目录。</p><div className="path-row"><input value={root} onChange={(event) => setRoot(event.target.value)} placeholder="例如：D:\\MorningBriefWorkspace" /><span className="secondary">请填写目录</span></div><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div></div>;
+}
+function ProviderStep({ providers, selected, onSelect, onComplete }) {
+  const [apiKey, setApiKey] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      if (selected === "deepseek" && apiKey) {
+        const response = await fetch(apiUrl(`/api/v1/providers/${selected}/credentials`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: apiKey }) });
+        if (!response.ok) throw new Error("provider");
+      }
+      onComplete();
+    } catch { setBusy(false); }
+  };
+  return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择你的 AI Provider</h4><p>密钥只保存到本机系统凭据，不会写入 SQLite 或日志。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div>{selected === "deepseek" && <label className="secret-field">DeepSeek API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" /></label>}<button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存 Provider 选择"} <ChevronRight size={16} /></button></div></div>;
+}
+function ChannelStep({ channels, selected, onSelect, onComplete }) {
+  const [values, setValues] = useState({ app_id: "", app_secret: "", user_open_id: "", chat_id: "" });
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch(apiUrl("/api/v1/channels/feishu/credentials"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      if (!response.ok) throw new Error("channel");
+      onComplete();
+    } catch { setBusy(false); }
+  };
+  return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => onSelect("feishu")}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><div className="channel-fields">{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <input key={key} type={key === "app_secret" ? "password" : "text"} placeholder={key} value={values[key]} onChange={(event) => setValues({ ...values, [key]: event.target.value })} />)}</div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button></div></div>;
+}
+function ProfileStep({ onComplete }) {
+  const [values, setValues] = useState({ "我的工作": "", "当前目标": "" });
+  const [busy, setBusy] = useState(false);
+  const submit = async () => {
+    setBusy(true);
+    try {
+      const response = await fetch(apiUrl("/api/v1/profile"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      if (!response.ok) throw new Error("profile");
+      onComplete();
+    } catch { setBusy(false); }
+  };
+  return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>内容会保存为工作区内的 Markdown 文件，之后可以随时修改。</p><div className="profile-grid"><label>我的工作<textarea value={values["我的工作"]} onChange={(event) => setValues({ ...values, "我的工作": event.target.value })} placeholder="例如：我负责……" /></label><label>当前目标<textarea value={values["当前目标"]} onChange={(event) => setValues({ ...values, "当前目标": event.target.value })} placeholder="例如：近期重点是……" /></label></div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "完成设置，进入工作台"} <ChevronRight size={16} /></button></div></div>;
+}
 
 createRoot(document.getElementById("root")).render(<App />);

@@ -1,4 +1,5 @@
 beautifulsoup4>=4.12,<5
+keyring>=25,<26
 lark-oapi>=1.4,<2
 requests>=2.31,<3
 zstandard>=0.22,<1
