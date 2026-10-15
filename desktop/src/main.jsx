@@ -19,6 +19,7 @@ import { apiUrl, probeLocalApi } from "./localApi";
 import { open } from "@tauri-apps/plugin-dialog";
 import WorkflowPage from "./pages/WorkflowPage";
 import DatabasePage from "./pages/DatabasePage";
+import FileTree from "./components/FileTree";
 
 const demoDiscovery = {
   providers: [
@@ -166,11 +167,11 @@ function AgentRuntime({ serviceState }) {
 function RuntimeCard({ label, value }) { return <div className="runtime-card"><span>{label}</span><strong>{value}</strong></div>; }
 function FileWorkspace({ serviceState }) {
   const demoFiles = [
-    ["2026-10-15-晨间简报.md", "Markdown", "知识库 / briefings", "今天 07:45"],
-    ["app.sqlite3", "SQLite", "data / database", "今天 09:12"],
-    ["conversation-20261015.json", "JSON", "Agent 对话 / archive", "今天 10:26"],
-    ["nutrition_20261015.jpg", "图片", "图片附件 / nutrition", "今天 12:18"],
-    ["agent-20261015.log", "日志", "运行日志", "今天 14:03"],
+    ["2026-10-15-晨间简报.md", "Markdown", "知识库 / briefings", "今天 07:45", "2026-10-15-晨间简报.md"],
+    ["app.sqlite3", "SQLite", "data / database", "今天 09:12", "app.sqlite3"],
+    ["conversation-20261015.json", "JSON", "Agent 对话 / archive", "今天 10:26", "conversation-20261015.json"],
+    ["nutrition_20261015.jpg", "图片", "图片附件 / nutrition", "今天 12:18", "nutrition_20261015.jpg"],
+    ["agent-20261015.log", "日志", "运行日志", "今天 14:03", "agent-20261015.log"],
   ];
   const [source, setSource] = useState(null);
   const [files, setFiles] = useState(demoFiles);
@@ -178,7 +179,6 @@ function FileWorkspace({ serviceState }) {
   const [preview, setPreview] = useState(null);
   const [binaryPreview, setBinaryPreview] = useState(null);
   const [live, setLive] = useState(false);
-  const [folderFilter, setFolderFilter] = useState("");
 
   const loadFiles = async () => {
     try {
@@ -229,10 +229,8 @@ function FileWorkspace({ serviceState }) {
   }, [source, selected, files]);
 
   const selectedFile = files.find(([, , , , path]) => path === selected);
-  const visibleFiles = files.filter(([, , path]) => !folderFilter || (folderFilter === "__root__" ? !path.includes("/") : path.startsWith(`${folderFilter}/`) || path === folderFilter));
   const binaryUrl = binaryPreview ? `data:${binaryPreview.content_type};base64,${binaryPreview.content_base64}` : null;
-  const folders = [...new Set(files.flatMap(([, , path]) => path.includes("/") ? [path.split("/")[0]] : []))].sort();
-  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Demo Obsidian</span><h2>文件与数据</h2><p>左侧是本地 Obsidian 文件树，点击文件夹查看其中的文件。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button></div></div><div className="file-layout"><aside className="file-tree"><strong>{source?.name ?? "Demo Obsidian"}</strong><button className={!folderFilter ? "tree-selected" : ""} onClick={() => setFolderFilter("")}><FolderOpen size={15} />全部文件</button>{files.some(([, , path]) => !path.includes("/")) && <button className={folderFilter === "__root__" ? "tree-selected" : ""} onClick={() => setFolderFilter("__root__")}><FolderOpen size={15} />根目录文件</button>}{folders.map((folder) => <button key={folder} className={folderFilter === folder ? "tree-selected" : ""} onClick={() => { setFolderFilter(folder); const first = files.find(([, , path]) => path.startsWith(`${folder}/`)); if (first) setSelected(first[4]); }}><FolderOpen size={15} />{folder}</button>)}<div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "已连接 demo/obsidian" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{visibleFiles.map(([name, type, path, time, filePath]) => <button className={`file-row ${selected === filePath ? "selected" : ""}`} key={filePath} onClick={() => setSelected(filePath)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selectedFile?.[0] || "未选择文件"}</h3><p>这里显示 demo/obsidian 中选中文件的只读内容。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selectedFile?.[0]} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selectedFile?.[0]} /> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong>{selectedFile[0]}</strong><br /><br /><span>正在读取本地 Markdown…</span></> : <span>此文件类型暂不支持预览：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>demo/obsidian</strong></div></aside></div></section>;
+  return <section className="file-workspace"><div className="file-toolbar"><div><span className="eyebrow">Demo Obsidian</span><h2>文件与数据</h2><p>左侧是本地 Obsidian 文件树，右侧查看选中文件。</p></div><div className="file-toolbar-actions"><button type="button" className="secondary" onClick={loadFiles}><RefreshCw size={15} />刷新索引</button></div></div><div className="file-layout"><aside className="file-tree"><strong>{source?.name ?? "Demo Obsidian"}</strong><FileTree files={files} selected={selected} onSelect={setSelected} /><div className="tree-note"><span className="pulse" /> {serviceState === "ready" && live ? "已连接 demo/obsidian" : "演示模式：本地 API 未启动"}</div></aside><div className="file-list"><div className="file-list-header"><span>名称</span><span>类型</span><span>更新时间</span></div>{files.map(([name, type, path, time, filePath]) => <button className={`file-row ${selected === filePath ? "selected" : ""}`} key={filePath} onClick={() => setSelected(filePath)}><span className="file-name"><FileGlyph type={type} /><span><strong>{name}</strong><small>{path}</small></span></span><span>{type}</span><span>{time}</span></button>)}</div><aside className="file-detail"><span className="eyebrow">Selected file</span><h3>{selectedFile?.[0] || "未选择文件"}</h3><p>这里显示 demo/obsidian 中选中文件的只读内容。</p><div className="preview-box">{preview !== null ? <pre>{preview}</pre> : binaryUrl && selectedFile?.[1] === "image" ? <img className="binary-preview" src={binaryUrl} alt={selectedFile?.[0]} /> : binaryUrl && selectedFile?.[1] === "pdf" ? <iframe className="binary-preview pdf-preview" src={binaryUrl} title={selectedFile?.[0]} /> : selectedFile?.[1] === "markdown" || selectedFile?.[1] === "Markdown" ? <><strong>{selectedFile[0]}</strong><br /><br /><span>正在读取本地 Markdown…</span></> : <span>此文件类型暂不支持预览：{selectedFile?.[1] ?? "未知"}。</span>}</div><div className="detail-line"><span>访问方式</span><strong>只读预览</strong></div><div className="detail-line"><span>数据位置</span><strong>demo/obsidian</strong></div></aside></div></section>;
 }
 function FileGlyph({ type }) {
   if (type === "SQLite") return <Database size={17} />;
