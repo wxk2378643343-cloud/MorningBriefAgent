@@ -40,13 +40,15 @@ const steps = [
 ];
 
 function App() {
-  const [activeSection, setActiveSection] = useState("文件与数据");
+  const [activeSection, setActiveSection] = useState("工作台");
   const [serviceState, setServiceState] = useState("starting");
   const [status, setStatus] = useState(null);
+  const [workspace, setWorkspace] = useState(null);
   const [discovery, setDiscovery] = useState(demoDiscovery);
   const [selectedProvider, setSelectedProvider] = useState("deepseek");
   const [selectedChannel, setSelectedChannel] = useState("feishu");
   const [message, setMessage] = useState("正在检查本地环境…");
+  const [setupMode, setSetupMode] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,21 +70,24 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (serviceState !== "ready") return undefined;
     Promise.all([
       fetch(apiUrl("/api/v1/onboarding/status")).then((response) => response.json()),
+      fetch(apiUrl("/api/v1/workspace")).then((response) => response.json()),
       fetch(apiUrl("/api/v1/providers/discovery")).then((response) => response.json()),
     ])
-      .then(([nextStatus, nextDiscovery]) => {
+      .then(([nextStatus, nextWorkspace, nextDiscovery]) => {
         setStatus(nextStatus);
+        setWorkspace(nextWorkspace);
         setDiscovery(nextDiscovery);
         const localProvider = nextDiscovery.providers?.find((provider) => provider.kind === "local_process" && provider.available);
         if (localProvider) setSelectedProvider(localProvider.name);
         setMessage("本地服务已连接");
       })
       .catch(() => {
-        setMessage("演示模式：本地 API 尚未启动");
+        setMessage("本地配置状态读取失败");
       });
-  }, []);
+  }, [serviceState]);
 
   const currentStep = status?.current_step ?? "workspace";
   const serviceLabel = {
@@ -91,7 +96,6 @@ function App() {
     offline: "演示模式：本地服务未连接",
     stopping: "本地服务正在停止",
   }[serviceState];
-  if (activeSection === "Agent 运行") return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div><div className="workspace-label">本地工作台</div><nav><NavItem icon={<LayoutDashboard size={17} />} label="工作台" active={false} onClick={() => setActiveSection("工作台")} /><NavItem icon={<FolderOpen size={17} />} label="文件与数据" active={false} onClick={() => setActiveSection("文件与数据")} /><NavItem icon={<Workflow size={17} />} label="工作流" active={false} onClick={() => setActiveSection("工作流")} /><NavItem icon={<Database size={17} />} label="数据库" active={false} onClick={() => setActiveSection("数据库")} /><NavItem icon={<Bot size={17} />} label="Agent 运行" active onClick={() => setActiveSection("Agent 运行")} /></nav></aside><main className="main"><header className="topbar"><div><span className="eyebrow">Runtime</span><h1>Agent 运行状态</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header><AgentRuntime serviceState={serviceState} /></main></div>;
   const currentIndex = Math.max(0, steps.findIndex((step) => step.key === currentStep));
   const completeStep = async (stepKey, detail) => {
     try {
@@ -101,7 +105,11 @@ function App() {
         body: JSON.stringify({ step_key: stepKey, detail }),
       });
       if (!response.ok) throw new Error("request failed");
-      setStatus(await response.json());
+      const nextStatus = await response.json();
+      setStatus(nextStatus);
+      if (stepKey === "workspace") {
+        setWorkspace(await fetch(apiUrl("/api/v1/workspace")).then((item) => item.json()));
+      }
       setMessage("配置已保存到本地");
     } catch {
       setMessage("演示模式：配置将在本地 API 启动后保存");
@@ -112,6 +120,29 @@ function App() {
       }));
     }
   };
+
+  if (serviceState !== "ready") {
+    return <StartupScreen serviceState={serviceState} serviceLabel={serviceLabel} onRetry={() => window.location.reload()} />;
+  }
+  if (setupMode || !workspace?.configured || !status?.complete) {
+    return (
+      <SetupScreen
+        serviceLabel={serviceLabel}
+        serviceState={serviceState}
+        status={status}
+        currentStep={currentStep}
+        currentIndex={currentIndex}
+        discovery={discovery}
+        selectedProvider={selectedProvider}
+        selectedChannel={selectedChannel}
+        setSelectedProvider={setSelectedProvider}
+        setSelectedChannel={setSelectedChannel}
+        completeStep={completeStep}
+        message={message}
+      />
+    );
+  }
+  if (activeSection === "Agent 运行") return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div><div className="workspace-label">本地工作台</div><nav><NavItem icon={<LayoutDashboard size={17} />} label="工作台" active={false} onClick={() => setActiveSection("工作台")} /><NavItem icon={<FolderOpen size={17} />} label="文件与数据" active={false} onClick={() => setActiveSection("文件与数据")} /><NavItem icon={<Workflow size={17} />} label="工作流" active={false} onClick={() => setActiveSection("工作流")} /><NavItem icon={<Database size={17} />} label="数据库" active={false} onClick={() => setActiveSection("数据库")} /><NavItem icon={<Bot size={17} />} label="Agent 运行" active onClick={() => setActiveSection("Agent 运行")} /></nav></aside><main className="main"><header className="topbar"><div><span className="eyebrow">Runtime</span><h1>Agent 运行状态</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header><AgentRuntime serviceState={serviceState} /></main></div>;
 
   return (
     <div className="app-shell">
@@ -129,12 +160,55 @@ function App() {
       </aside>
       <main className="main">
         <header className="topbar"><div><span className="eyebrow">首次启动</span><h1>把你的工作流交给本地 Agent</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header>
-        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
+        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage onReconfigure={async () => { await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" }); setSetupMode(true); setActiveSection("工作台"); }} /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
           <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
           <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
-        </section>
+        </section></>}
+      </main>
+    </div>
+  );
+}
+
+function StartupScreen({ serviceState, serviceLabel, onRetry }) {
+  const isOffline = serviceState === "offline";
+  return (
+    <div className="startup-screen">
+      <div className="startup-card">
+        <div className="brand startup-brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
+        <span className="eyebrow">LOCAL DESKTOP</span>
+        <h1>{isOffline ? "本地服务没有启动" : "正在准备本地工作台"}</h1>
+        <p>{isOffline ? "请启动本地 API 后重试。你的文件和配置不会上传到云端。" : "正在检查 Python 服务和本机数据环境，请稍候。"}</p>
+        <div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div>
+        {isOffline && <button className="primary startup-action" type="button" onClick={onRetry}><RefreshCw size={15} />重新检查</button>}
+      </div>
+    </div>
+  );
+}
+
+function SetupScreen({
+  serviceLabel,
+  serviceState,
+  status,
+  currentStep,
+  currentIndex,
+  discovery,
+  selectedProvider,
+  selectedChannel,
+  setSelectedProvider,
+  setSelectedChannel,
+  completeStep,
+  message,
+}) {
+  return (
+    <div className="setup-screen">
+      <header className="setup-topbar">
+        <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
+        <div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div>
+      </header>
+      <main className="setup-main">
+        <div className="setup-intro"><span className="eyebrow">FIRST RUN</span><h1>先配置本地工作区</h1><p>选择你的本地文件位置，再配置 AI 和飞书。完成后才进入工作台。</p></div>
         <section className="setup-card">
-          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>完成你的本地环境</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 完成</span></div>
+          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 完成</span></div>
           <div className="stepper">{steps.map((step, index) => { const Icon = step.icon; const done = index < currentIndex; const active = index === currentIndex; return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`} key={step.key}><div className="step-icon">{done ? <Check size={15} /> : <Icon size={16} />}</div><span>{step.label}</span>{index < steps.length - 1 && <ChevronRight className="step-arrow" size={15} />}</div>; })}</div>
           <div className="setup-content">
             {currentStep === "workspace" && <WorkspaceStep onComplete={() => completeStep("workspace", "local workspace initialized")} />}
@@ -142,7 +216,8 @@ function App() {
             {currentStep === "channel" && <ChannelStep channels={discovery.channels} selected={selectedChannel} onSelect={setSelectedChannel} onComplete={() => completeStep("channel", selectedChannel)} />}
             {currentStep === "profile" && <ProfileStep onComplete={() => completeStep("profile", "profile ready")} />}
           </div>
-        </section></>}
+          {message && <div className="setup-message">{message}</div>}
+        </section>
       </main>
     </div>
   );
@@ -166,6 +241,9 @@ function SectionPlaceholder({ section }) {
     "Agent 运行": "这里将展示 Provider、Token、耗时、输入输出和同步结果。",
   };
   return <section className="placeholder-page"><div className="placeholder-icon"><FolderOpen size={25} /></div><span className="eyebrow">Preview</span><h2>{section}</h2><p>{descriptions[section]}</p><button className="primary" type="button" onClick={() => window.location.reload()}>返回工作台</button></section>;
+}
+function SettingsPage({ onReconfigure }) {
+  return <section className="placeholder-page"><div className="placeholder-icon"><Settings2 size={25} /></div><span className="eyebrow">Local settings</span><h2>设置</h2><p>所有配置只保存在本机。重新配置不会删除工作区文件，只会重新打开首次启动向导。</p><button className="primary" type="button" onClick={onReconfigure}>重新配置本地工作区</button></section>;
 }
 function AgentRuntime({ serviceState }) {
   const [status, setStatus] = useState({ latest: null, recent: [], sync: { pending: 0, failed: 0 } });

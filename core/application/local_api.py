@@ -22,7 +22,7 @@ from storage.data_sources import (
     register_source,
     scan_source,
 )
-from storage.onboarding import complete_step, get_status
+from storage.onboarding import complete_step, get_status, reset_all
 from storage.workspace import initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
 from core.runtime.config import PROJECT_ROOT
@@ -142,6 +142,9 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        if self.path == "/api/v1/onboarding/reset":
+            self._send_json(reset_all(database_path=self.server.database_path))
+            return
         if self.path in {"/api/v1/workspace/select", "/api/v1/workspace/initialize"}:
             try:
                 payload = self._read_json()

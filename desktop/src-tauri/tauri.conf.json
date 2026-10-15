@@ -5,7 +5,7 @@
   "identifier": "local.morningbrief.desktop",
   "build": {
     "beforeDevCommand": "powershell -NoProfile -ExecutionPolicy Bypass -File ../scripts/start_tauri_dev.ps1",
-    "devUrl": "http://localhost:5173",
+    "devUrl": "http://localhost:4173",
     "frontendDist": "../dist"
   },
   "app": {
