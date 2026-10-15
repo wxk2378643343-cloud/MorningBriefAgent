@@ -54,6 +54,11 @@ AGENTAPI_EXE = os.getenv("AGENTAPI_EXE", "")
 AGY_BRAIN_DIR = os.getenv("AGY_BRAIN_DIR", "")
 AGY_CONVERSATION_ID = os.getenv("AGY_CONVERSATION_ID", "")
 AGY_ARCHIVE_DIR = os.getenv("AGY_ARCHIVE_DIR", "")
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_API_URL = os.getenv(
+    "DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions"
+)
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 LOCAL_PROXY = os.getenv("LOCAL_PROXY", "")
 MARKET_DATA_URL = os.getenv("MARKET_DATA_URL", "https://hq.sinajs.cn")
 PORTFOLIO_FILE = os.getenv("PORTFOLIO_FILE", str(PROJECT_ROOT / "data" / "portfolio.json"))
