@@ -195,6 +195,14 @@ CREATE TABLE IF NOT EXISTS local_settings (
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS onboarding_steps (
+    step_key TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'pending',
+    detail TEXT,
+    completed_at TEXT,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE INDEX IF NOT EXISTS idx_fact_records_type_time
     ON fact_records(fact_type, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_fact_records_source
