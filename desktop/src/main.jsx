@@ -9,6 +9,13 @@ import {
   LayoutDashboard,
   RefreshCw,
   Workflow,
+  Play,
+  Clock,
+  Calendar,
+  CheckCircle2,
+  TrendingUp,
+  ShieldCheck,
+  Zap,
 } from "lucide-react";
 import "./styles.css";
 import "./components/onboarding/onboarding.css";
@@ -174,30 +181,345 @@ function App() {
       <main className="main">
         <AppTopbar
           eyebrow={activeSection === "设置" ? "LOCAL SETTINGS" : activeSection === "工作台" ? "LOCAL WORKBENCH" : "MORNINGBRIEF AGENT"}
-          title={activeSection === "设置" ? "设置" : activeSection === "工作台" ? "你的本地 Agent 工作台" : activeSection}
+          title={activeSection === "设置" ? "设置" : activeSection === "工作台" ? "工作台" : activeSection}
+          activeSection={activeSection}
+          onNavigate={setActiveSection}
           serviceState={serviceState}
           serviceLabel={serviceLabel}
+          workspace={workspace}
+          onQuickRun={() => setActiveSection("工作流")}
         />
-        {activeSection === "文件与数据" ? <React.Suspense fallback={<section className="placeholder-page"><p>正在打开本地文件工作台…</p></section>}><DesktopFileWorkspace serviceState={serviceState} /></React.Suspense> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage status={status} onOpenSetup={(stepKey) => {
-          setSetupStep(stepKey);
-          setSetupMode(true);
-        }} onReconfigure={async () => { await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" }); setSetupStep(null); setSetupMode(true); setActiveSection("工作台"); }} /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
-          <div><div className="hero-kicker"><KeyRound size={15} /> 你的数据不会自动上传</div><h2>先完成本地配置，<br /><em>再开始建立你的工作系统。</em></h2><p>MorningBrief 会把数据库、文件、Agent 和消息渠道留在你的电脑上。你可以随时修改或移除配置。</p></div>
-          <div className="hero-orbit"><div className="orbit orbit-one" /><div className="orbit orbit-two" /><div className="orbit-core"><Bot size={30} /></div><span className="orbit-label label-one">SQLite</span><span className="orbit-label label-two">Markdown</span><span className="orbit-label label-three">Agent</span></div>
-        </section></>}
+        {activeSection === "文件与数据" ? (
+          <React.Suspense fallback={<section className="placeholder-page"><p>正在打开本地文件工作台…</p></section>}>
+            <DesktopFileWorkspace serviceState={serviceState} />
+          </React.Suspense>
+        ) : activeSection === "工作流" ? (
+          <WorkflowPage />
+        ) : activeSection === "数据库" ? (
+          <DatabasePage />
+        ) : activeSection === "设置" ? (
+          <SettingsPage
+            status={status}
+            onOpenSetup={(stepKey) => {
+              setSetupStep(stepKey);
+              setSetupMode(true);
+            }}
+            onReconfigure={async () => {
+              await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" });
+              setSetupStep(null);
+              setSetupMode(true);
+              setActiveSection("工作台");
+            }}
+          />
+        ) : activeSection !== "工作台" ? (
+          <SectionPlaceholder section={activeSection} />
+        ) : (
+          <WorkbenchHome onNavigate={setActiveSection} workspace={workspace} status={status} />
+        )}
       </main>
     </ApplicationShell>
   );
 }
 
-function WorkbenchQuickNav({ onOpen }) {
-  const items = [
-    ["文件与数据", "查看本地知识库文件树", FolderOpen],
-    ["工作流", "查看和运行本地工作流", Workflow],
-    ["数据库", "查看和管理业务记录", Database],
-    ["Agent 运行", "查看运行、Token 和同步状态", Bot],
-  ];
-  return <section className="quick-nav"><div><span className="eyebrow">LOCAL WORKBENCH</span><h2>你的本地 Agent 工作台</h2><p>你的工作区、知识库文件和业务数据都保留在本机，选择一个入口开始使用。</p></div><div className="quick-nav-grid">{items.map(([label, description, Icon]) => <button type="button" className="quick-nav-card" key={label} onClick={() => onOpen(label)}><span className="quick-nav-icon"><Icon size={18} /></span><strong>{label}</strong><span>{description}</span><ChevronRight size={16} /></button>)}</div></section>;
+function WorkbenchHome({ onNavigate, workspace, status }) {
+  const [runningKey, setRunningKey] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
+
+  const currentHour = new Date().getHours();
+  const greeting =
+    currentHour >= 5 && currentHour < 12
+      ? "早上好，站长 🌅"
+      : currentHour >= 12 && currentHour < 14
+      ? "中午好，站长 ☀️"
+      : currentHour >= 14 && currentHour < 18
+      ? "下午好，站长 ☕"
+      : "夜深了，站长 🌙";
+
+  const todayStr = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  }).format(new Date());
+
+  const quickRun = async (key, name) => {
+    setRunningKey(key);
+    setActionNotice(`正在触发 [${name}] 智能体...`);
+    try {
+      await fetch(apiUrl(`/api/v1/workflows/${key}/run`), { method: "POST" });
+      setActionNotice(`已成功启动 [${name}]，全流程后台静默执行中`);
+      setTimeout(() => setActionNotice(""), 3500);
+    } catch {
+      setActionNotice(`触发 [${name}] 失败，请检查本地后端服务`);
+      setTimeout(() => setActionNotice(""), 3500);
+    } finally {
+      setRunningKey("");
+    }
+  };
+
+  return (
+    <div className="workbench-home-container">
+      {/* Executive Greeting & Spring Festival Goal Banner */}
+      <section className="executive-hero-banner">
+        <div className="executive-hero-left">
+          <div className="executive-date-pill">
+            <Calendar size={13} className="text-indigo-600" />
+            <span>{todayStr}</span>
+            <span className="dot-sep">·</span>
+            <span className="goal-tag">🎯 距2027春节目标剩 82 天</span>
+          </div>
+
+          <h2 className="executive-greeting-title">{greeting}</h2>
+          <p className="executive-subtitle">
+            你的本地全双工智能体总控中心已就绪。所有业务数据、知识库、行情与日程均保留在本机。
+          </p>
+
+          <div className="executive-fast-actions">
+            <button
+              type="button"
+              className="executive-action-btn primary"
+              onClick={() => quickRun("todo-morning", "早间行动与日程")}
+              disabled={Boolean(runningKey)}
+            >
+              <Play size={13} />
+              <span>{runningKey === "todo-morning" ? "正在执行晨报..." : "运行今日晨报"}</span>
+            </button>
+            <button
+              type="button"
+              className="executive-action-btn secondary"
+              onClick={() => quickRun("fund", "基金量化投顾")}
+              disabled={Boolean(runningKey)}
+            >
+              <TrendingUp size={13} className="text-emerald-600" />
+              <span>{runningKey === "fund" ? "计算行情中..." : "评估基金持仓"}</span>
+            </button>
+            <button
+              type="button"
+              className="executive-action-btn secondary"
+              onClick={() => quickRun("todo-evening", "晚间复盘总结")}
+              disabled={Boolean(runningKey)}
+            >
+              <Clock size={13} className="text-indigo-600" />
+              <span>{runningKey === "todo-evening" ? "正在复盘..." : "触发晚间复盘"}</span>
+            </button>
+            <button
+              type="button"
+              className="executive-action-btn secondary"
+              onClick={() => onNavigate("文件与数据")}
+            >
+              <FolderOpen size={13} className="text-slate-600" />
+              <span>浏览知识库</span>
+            </button>
+          </div>
+
+          {actionNotice && (
+            <div className="executive-notice-toast animate-fade-in">
+              <CheckCircle2 size={13} className="text-emerald-500" />
+              <span>{actionNotice}</span>
+            </div>
+          )}
+        </div>
+
+        <div className="executive-hero-right">
+          <div className="executive-radar-box">
+            <div className="radar-circle circle-1" />
+            <div className="radar-circle circle-2" />
+            <div className="radar-core">
+              <Bot size={28} className="text-white" />
+            </div>
+            <span className="radar-badge badge-obsidian">Obsidian 知识库</span>
+            <span className="radar-badge badge-sqlite">SQLite WAL</span>
+            <span className="radar-badge badge-feishu">飞书全双工 Bot</span>
+          </div>
+        </div>
+      </section>
+
+      {/* 4-Grid Bento Live Cards */}
+      <section className="workbench-bento-grid">
+        {/* Card 1: Knowledge Base */}
+        <div className="wb-bento-card" onClick={() => onNavigate("文件与数据")}>
+          <div className="wb-card-head">
+            <div className="wb-icon-box indigo">
+              <FolderOpen size={18} />
+            </div>
+            <span className="wb-badge">本地知识库</span>
+          </div>
+          <strong className="wb-title">文件与本地数据</strong>
+          <p className="wb-desc">双向链接 Markdown 文档、任务清单与离线附件存储库。</p>
+          <div className="wb-foot">
+            <span className="wb-foot-meta truncate max-w-[200px]">
+              📁 {workspace?.name || "wxk2378643343-cloud"}
+            </span>
+            <ChevronRight size={14} className="wb-arrow" />
+          </div>
+        </div>
+
+        {/* Card 2: Workflows */}
+        <div className="wb-bento-card" onClick={() => onNavigate("工作流")}>
+          <div className="wb-card-head">
+            <div className="wb-icon-box emerald">
+              <Clock size={18} />
+            </div>
+            <span className="wb-badge active">系统托管中</span>
+          </div>
+          <strong className="wb-title">自动化与定时调度</strong>
+          <p className="wb-desc">早间行动派发、考研早报、全球资讯、基金投顾与晚间总结。</p>
+          <div className="wb-foot">
+            <span className="wb-foot-meta text-emerald-700 font-medium">
+              ⚡ 7 个专属智能体就绪
+            </span>
+            <ChevronRight size={14} className="wb-arrow" />
+          </div>
+        </div>
+
+        {/* Card 3: Database */}
+        <div className="wb-bento-card" onClick={() => onNavigate("数据库")}>
+          <div className="wb-card-head">
+            <div className="wb-icon-box amber">
+              <Database size={18} />
+            </div>
+            <span className="wb-badge">ACID 事务</span>
+          </div>
+          <strong className="wb-title">持久化业务数据库</strong>
+          <p className="wb-desc">待办事实、飞书日程、基金持仓、大盘实时快照与新闻库。</p>
+          <div className="wb-foot">
+            <span className="wb-foot-meta">7 张核心表 · 零外网泄露</span>
+            <ChevronRight size={14} className="wb-arrow" />
+          </div>
+        </div>
+
+        {/* Card 4: Agent Runtime */}
+        <div className="wb-bento-card" onClick={() => onNavigate("Agent 运行")}>
+          <div className="wb-card-head">
+            <div className="wb-icon-box purple">
+              <Bot size={18} />
+            </div>
+            <span className="wb-badge">在线响应</span>
+          </div>
+          <strong className="wb-title">智能体态势与飞书</strong>
+          <p className="wb-desc">多模态图片识别、DeepSeek 推理执行、富文本卡片即时推送。</p>
+          <div className="wb-foot">
+            <span className="wb-foot-meta">飞书长连接守护进程活跃</span>
+            <ChevronRight size={14} className="wb-arrow" />
+          </div>
+        </div>
+      </section>
+
+      {/* Pipeline Schedule & Fast Launchpad */}
+      <section className="workbench-pipeline-section">
+        <div className="pipeline-card">
+          <div className="pipeline-header">
+            <div>
+              <span className="eyebrow">DAILY TIMELINE</span>
+              <h3>今日自动化流水线时刻表</h3>
+            </div>
+            <button
+              type="button"
+              className="secondary compact text-xs"
+              onClick={() => onNavigate("工作流")}
+            >
+              配置时刻
+            </button>
+          </div>
+
+          <div className="pipeline-timeline">
+            {[
+              { time: "06:00", title: "🌅 早间待办与行动派发", desc: "整理昨天新增信息，智能生成今日行动与飞书日程", cat: "规划" },
+              { time: "06:30", title: "📖 本地知识库考研早报", desc: "从本地 Obsidian 提炼重点考研与备考知识卡片", cat: "知识" },
+              { time: "07:45", title: "🌐 全球热点晨报智能去重", desc: "抓取权威公开新闻源，去重筛选并生成早报", cat: "资讯" },
+              { time: "14:00", title: "📈 基金持仓与大盘实时投顾", desc: "新浪全球实时行情评估，82天目标收益跟踪", cat: "金融" },
+              { time: "23:00", title: "🌙 晚间复盘与级联同步", desc: "完成今日待办结算，级联写回日/周/月周期复盘", cat: "总结" },
+            ].map((step, idx) => (
+              <div key={idx} className="timeline-item">
+                <span className="timeline-time">{step.time}</span>
+                <div className="timeline-dot-line">
+                  <span className="timeline-dot" />
+                  {idx < 4 && <span className="timeline-line" />}
+                </div>
+                <div className="timeline-content">
+                  <div className="flex items-center gap-2">
+                    <strong className="text-xs text-slate-800">{step.title}</strong>
+                    <span className="pipeline-tag">{step.cat}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">{step.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="quick-launchpad-card">
+          <div className="pipeline-header">
+            <div>
+              <span className="eyebrow">INSTANT LAUNCHPAD</span>
+              <h3>高频动作快捷启动</h3>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 mb-4">
+            点击直接呼出对应工作流或功能，无需翻找层级菜单。
+          </p>
+
+          <div className="launchpad-grid">
+            <button
+              type="button"
+              className="launchpad-btn"
+              onClick={() => quickRun("todo-morning", "早间待办与日程")}
+            >
+              <div className="launchpad-icon blue">
+                <Play size={15} />
+              </div>
+              <div className="launchpad-text">
+                <strong>生成今日待办</strong>
+                <small>智能规划并同步日历</small>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="launchpad-btn"
+              onClick={() => quickRun("fund", "基金量化投顾")}
+            >
+              <div className="launchpad-icon emerald">
+                <TrendingUp size={15} />
+              </div>
+              <div className="launchpad-text">
+                <strong>基金行情评估</strong>
+                <small>计算持仓盈亏与建议</small>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="launchpad-btn"
+              onClick={() => quickRun("news", "全球热点晨报")}
+            >
+              <div className="launchpad-icon amber">
+                <Zap size={15} />
+              </div>
+              <div className="launchpad-text">
+                <strong>抓取全球新闻</strong>
+                <small>多源快讯聚合生成</small>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              className="launchpad-btn"
+              onClick={() => onNavigate("设置")}
+            >
+              <div className="launchpad-icon purple">
+                <ShieldCheck size={15} />
+              </div>
+              <div className="launchpad-text">
+                <strong>模型与渠道配置</strong>
+                <small>DeepSeek / 飞书配置</small>
+              </div>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
 }
 function SectionPlaceholder({ section }) {
   const descriptions = {
