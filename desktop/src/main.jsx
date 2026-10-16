@@ -166,7 +166,15 @@ function App() {
           setSetupStep(ONBOARDING_STEPS[Math.max(0, index - 1)].key);
         }}
         onSkip={currentStep === "workspace" ? null : skipRemainingSetup}
-        onCancel={() => { setSetupMode(false); setSetupStep(null); setActiveSection("工作台"); }}
+        onCancel={() => {
+          setSetupMode(false);
+          setSetupStep(null);
+          if (firstRun || !status?.complete) {
+            setShowWelcome(true);
+          } else {
+            setActiveSection("工作台");
+          }
+        }}
         message={message}
       />
     );

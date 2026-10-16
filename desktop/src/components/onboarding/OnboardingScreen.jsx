@@ -36,6 +36,12 @@ export function StartupScreen({ serviceState, serviceLabel, onRetry }) {
 }
 
 export function WelcomeScreen({ onEnter }) {
+  const features = [
+    { icon: "⌁", label: "LOCAL FIRST", title: "你的数据留在本机", copy: "Markdown、SQLite 和运行记录都由你掌控，不依赖云端存储。" },
+    { icon: "✦", label: "ONE CONTEXT", title: "把信息放在一起", copy: "知识库、待办、日程和工作内容共享一套清晰的个人上下文。" },
+    { icon: "↗", label: "ACTIONABLE", title: "从信息到行动", copy: "让 Agent 帮你提炼结论、安排下一步，并减少重复整理。" },
+    { icon: "◌", label: "EXTENSIBLE", title: "按你的方式成长", copy: "先从本地工作台开始，之后再接入更多模型和消息渠道。" },
+  ];
   return (
     <div className="welcome-screen">
       <header className="setup-topbar">
@@ -47,9 +53,11 @@ export function WelcomeScreen({ onEnter }) {
         <h1>欢迎使用<br /><em>MorningBriefAgent</em></h1>
         <p className="welcome-lead">把信息整理、工作复盘和行动规划交给一个真正属于你的本地 Agent。</p>
         <div className="welcome-features">
-          <div><span className="welcome-feature-icon">⌁</span><strong>连接你的信息</strong><p>读取本地 Markdown、聊天记录和业务数据，形成统一上下文。</p></div>
-          <div><span className="welcome-feature-icon">✦</span><strong>理解你的工作</strong><p>通过待办、日程、新闻和知识库工作流，减少重复整理。</p></div>
-          <div><span className="welcome-feature-icon">↗</span><strong>辅助你的行动</strong><p>让 Agent 输出清晰的结论、提醒和下一步建议。</p></div>
+          {features.map((feature) => <article className="welcome-feature-card" key={feature.label}>
+            <div className="welcome-feature-top"><span className="welcome-feature-icon">{feature.icon}</span><span className="welcome-feature-label">{feature.label}</span></div>
+            <strong>{feature.title}</strong>
+            <p>{feature.copy}</p>
+          </article>)}
         </div>
         <button className="primary welcome-enter" type="button" onClick={onEnter}>开始配置我的工作台 <ChevronRight size={16} /></button>
         <small className="welcome-footnote">本地文件由你掌控，之后可以在设置中随时修改。</small>
