@@ -20,11 +20,14 @@ class DesktopWorkspaceTests(unittest.TestCase):
             info = initialize_workspace(root, database_path=database)
             self.assertTrue(info["configured"])
             self.assertEqual(info["default_root_path"], str(default_workspace_root()))
+            self.assertEqual(len(info["created_files"]), len(OBSIDIAN_LAYOUT))
             for directory in WORKSPACE_DIRECTORIES:
                 self.assertTrue((root / directory).is_dir())
             self.assertTrue((root / "data" / "app.sqlite3").is_file())
             for relative_path in OBSIDIAN_LAYOUT:
                 self.assertTrue((root / "vault" / relative_path).is_file())
+            second = initialize_workspace(root, database_path=database)
+            self.assertEqual(second["created_files"], [])
 
     def test_api_saves_profile_and_never_accepts_secret_as_database_setting(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -63,6 +66,24 @@ class DesktopWorkspaceTests(unittest.TestCase):
                 with patch("core.application.local_api.get_secret", side_effect=lambda name: "configured" if any(token in name for token in ("app_id", "app_secret", "api_key")) else None):
                     self.assertTrue(self._post(base + "/api/v1/providers/deepseek/test", {})["ok"])
                     self.assertTrue(self._post(base + "/api/v1/channels/feishu/test", {})["ok"])
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_empty_provider_and_channel_credentials_are_rejected(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with self.assertRaises(Exception):
+                    self._post(base + "/api/v1/providers/deepseek/credentials", {})
+                with self.assertRaises(Exception):
+                    self._post(base + "/api/v1/channels/feishu/credentials", {})
             finally:
                 server.shutdown()
                 server.server_close()

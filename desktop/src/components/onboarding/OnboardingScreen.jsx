@@ -76,7 +76,6 @@ export function SetupScreen({
   setSelectedChannel,
   completeStep,
   onBack,
-  onSkip,
   onCancel,
   message,
 }) {
@@ -95,7 +94,6 @@ export function SetupScreen({
           </div>
           <div className="setup-footer">
             <button className="secondary" type="button" onClick={onBack}><span>←</span>{currentIndex === 0 ? "返回欢迎页" : "上一步"}</button>
-            {onSkip && <button className="text-button" type="button" onClick={onSkip}>稍后配置</button>}
             <button className="text-button setup-cancel" type="button" onClick={onCancel}>取消</button>
           </div>
           {message && <div className="setup-message">{message}</div>}
@@ -133,45 +131,57 @@ function WorkspaceStep({ initialRoot, onComplete }) {
 function ProviderStep({ providers, selected, onSelect, onComplete }) {
   const [apiKey, setApiKey] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async () => {
     setBusy(true);
+    setError("");
     try {
       const provider = providers.find((item) => item.name === selected);
+      if (!provider?.available && !provider?.configured) throw new Error("provider_unavailable");
       if (selected === "deepseek" && !apiKey && !provider?.configured) throw new Error("api_key_required");
       if (selected === "deepseek" && apiKey) {
         const response = await fetch(apiUrl(`/api/v1/providers/${selected}/credentials`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: apiKey }) });
         if (!response.ok) throw new Error("provider");
       }
       onComplete();
-    } catch { setBusy(false); }
+    } catch (caught) {
+      setBusy(false);
+      setError(caught.message === "provider_unavailable" ? "这个 Provider 当前不可用，请选择已检测到的本地 Agent 或填写可用 API Key。" : "请先完成 AI Provider 配置。");
+    }
   };
-  return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择 AI 运行方式</h4><p>优先检测本地 Agent 进程；也可以选择 API。密钥只保存到本机系统凭据。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => onSelect(provider.name)}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到，可使用" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div>{selected === "deepseek" && <label className="secret-field">DeepSeek API Key<input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder="sk-…" /></label>}<button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "使用此 Provider"} <ChevronRight size={16} /></button></div></div>;
+  return <div className="step-panel"><div className="panel-icon violet"><Bot size={21} /></div><div className="panel-copy"><h4>选择 AI 运行方式</h4><p>优先检测本地 Agent 进程；也可以选择 API。密钥只保存到本机系统凭据。</p><div className="provider-grid">{providers.map((provider) => <button className={`provider-option ${selected === provider.name ? "selected" : ""}`} key={provider.name} onClick={() => { onSelect(provider.name); setError(""); }}><span className="provider-dot" /><span><strong>{provider.name}</strong><small>{provider.available ? "已检测到，可使用" : provider.detail}</small></span>{selected === provider.name && <Check size={16} />}</button>)}</div>{selected === "deepseek" && <label className="secret-field">DeepSeek API Key<input type="password" value={apiKey} onChange={(event) => { setApiKey(event.target.value); setError(""); }} placeholder="sk-…" /></label>}<button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "使用此 Provider"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
 
 function ChannelStep({ channels, selected, onSelect, onComplete }) {
   const [values, setValues] = useState({ app_id: "", app_secret: "", user_open_id: "", chat_id: "" });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async () => {
     setBusy(true);
+    setError("");
     try {
+      if (Object.values(values).some((value) => !value.trim())) throw new Error("required");
       const response = await fetch(apiUrl("/api/v1/channels/feishu/credentials"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
       if (!response.ok) throw new Error("channel");
       onComplete();
-    } catch { setBusy(false); }
+    } catch { setBusy(false); setError("请完整填写飞书 App ID、App Secret、User Open ID 和 Chat ID 后继续。"); }
   };
-  return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => onSelect("feishu")}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><div className="channel-fields">{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <input key={key} type={key === "app_secret" ? "password" : "text"} placeholder={key} value={values[key]} onChange={(event) => setValues({ ...values, [key]: event.target.value })} />)}</div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button></div></div>;
+  return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => { onSelect("feishu"); setError(""); }}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><div className="channel-fields">{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <input key={key} type={key === "app_secret" ? "password" : "text"} placeholder={key} value={values[key]} onChange={(event) => { setValues({ ...values, [key]: event.target.value }); setError(""); }} />)}</div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
 
 function ProfileStep({ onComplete }) {
   const [values, setValues] = useState({ "我的工作": "", "当前目标": "" });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   const submit = async () => {
     setBusy(true);
+    setError("");
     try {
+      if (Object.values(values).some((value) => !value.trim())) throw new Error("required");
       const response = await fetch(apiUrl("/api/v1/profile"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
       if (!response.ok) throw new Error("profile");
       onComplete();
-    } catch { setBusy(false); }
+    } catch { setBusy(false); setError("请填写你的工作内容和当前目标后继续。"); }
   };
-  return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>内容会保存为工作区内的 Markdown 文件，之后可以随时修改。</p><div className="profile-grid"><label>我的工作<textarea value={values["我的工作"]} onChange={(event) => setValues({ ...values, "我的工作": event.target.value })} placeholder="例如：我负责……" /></label><label>当前目标<textarea value={values["当前目标"]} onChange={(event) => setValues({ ...values, "当前目标": event.target.value })} placeholder="例如：近期重点是……" /></label></div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "完成设置，进入工作台"} <ChevronRight size={16} /></button></div></div>;
+  return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>内容会保存为工作区内的 Markdown 文件，之后可以随时修改。</p><div className="profile-grid"><label>我的工作<textarea value={values["我的工作"]} onChange={(event) => { setValues({ ...values, "我的工作": event.target.value }); setError(""); }} placeholder="例如：我负责……" /></label><label>当前目标<textarea value={values["当前目标"]} onChange={(event) => { setValues({ ...values, "当前目标": event.target.value }); setError(""); }} placeholder="例如：近期重点是……" /></label></div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "完成设置，进入工作台"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
