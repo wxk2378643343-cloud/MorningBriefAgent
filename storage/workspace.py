@@ -35,7 +35,7 @@ OBSIDIAN_LAYOUT = {
 def default_workspace_root() -> Path:
     """Return a safe local default without requiring a cloud or user prompt."""
     preferred = Path("D:/MorningBriefWorkspace")
-    return preferred if preferred.anchor and preferred.drive and preferred.drive.upper() == "D:" else Path.home() / "MorningBriefWorkspace"
+    return preferred if Path("D:/").is_dir() else Path.home() / "MorningBriefWorkspace"
 
 
 def initialize_workspace(root_path: str | Path, *, database_path: str | Path | None = None) -> dict[str, Any]:

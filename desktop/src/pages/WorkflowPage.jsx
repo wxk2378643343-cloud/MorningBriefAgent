@@ -1,15 +1,15 @@
 import React, { useEffect, useState } from "react";
 import { Play, RefreshCw } from "lucide-react";
-import { apiUrl } from "../localApi";
+import { apiUrl, fetchJson } from "../localApi";
 
 export default function WorkflowPage() {
   const [payload, setPayload] = useState({ workflows: [], runs: [] });
   const [busy, setBusy] = useState("");
-  const load = () => fetch(apiUrl("/api/v1/workflows")).then((r) => r.json()).then(setPayload).catch(() => {});
+  const load = () => fetchJson("/api/v1/workflows").then(setPayload).catch(() => {});
   useEffect(() => { load(); const timer = setInterval(load, 5000); return () => clearInterval(timer); }, []);
   const run = async (key) => {
     setBusy(key);
-    try { await fetch(apiUrl(`/api/v1/workflows/${key}/run`), { method: "POST" }); await load(); }
+    try { await fetchJson(`/api/v1/workflows/${key}/run`, { method: "POST" }); await load(); }
     finally { setBusy(""); }
   };
   return <section className="workspace-page">

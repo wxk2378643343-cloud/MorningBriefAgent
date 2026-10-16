@@ -22,10 +22,9 @@ from storage.data_sources import (
     register_source,
     scan_source,
 )
-from storage.onboarding import complete_step, get_status, reset_all, skip_step
+from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, reset_all
 from storage.workspace import default_workspace_root, initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
-from core.runtime.config import PROJECT_ROOT
 from storage.database_browser import create as create_record, delete as delete_record, rows as database_rows, tables as database_tables, update as update_record
 from storage.workflows import list_runs, list_workflows, run_workflow
 
@@ -69,14 +68,7 @@ class _Handler(BaseHTTPRequestHandler):
                 except ValueError as exc:
                     self._send_json({"error": str(exc)}, HTTPStatus.FORBIDDEN)
         elif self.path == "/api/v1/data-sources":
-            sources = list_sources(database_path=self.server.database_path)
-            if not sources:
-                demo_root = PROJECT_ROOT / "demo" / "obsidian"
-                if demo_root.is_dir():
-                    source_id = register_source("Demo Obsidian", demo_root, database_path=self.server.database_path)
-                    scan_source(source_id, database_path=self.server.database_path)
-                    sources = list_sources(database_path=self.server.database_path)
-            self._send_json({"sources": sources})
+            self._send_json(self._data_sources_payload())
         elif self.path.startswith("/api/v1/file-binary"):
             source_id = self._query_value("source_id")
             relative_path = self._query_value("path")
@@ -160,22 +152,29 @@ class _Handler(BaseHTTPRequestHandler):
                     source_id,
                     database_path=self.server.database_path,
                 )
+                result["active_source_id"] = source_id
                 self._send_json(result)
             except (ValueError, TypeError, OSError) as exc:
                 self._send_json({"error": "workspace_initialization_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
-        if self.path == "/api/v1/workspace/initialize-demo":
-            try:
-                demo_root = PROJECT_ROOT / "demo" / "obsidian"
-                initialize_workspace(PROJECT_ROOT / "demo", database_path=self.server.database_path)
-                source_id = register_source("Demo Obsidian", demo_root, database_path=self.server.database_path)
-                indexed = scan_source(source_id, database_path=self.server.database_path)
-                self._send_json({"workspace": workspace_info(self.server.database_path), "source_id": source_id, "indexed_files": indexed})
-            except (ValueError, OSError, TypeError) as exc:
-                self._send_json({"error": "demo_initialization_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
-            return
         if self.path == "/api/v1/workspace/scan":
-            self._send_json({"workspace": workspace_info(self.server.database_path)})
+            payload = self._data_sources_payload()
+            active_source_id = payload.get("active_source_id")
+            if not active_source_id:
+                self._send_json(
+                    {"error": "workspace_source_not_configured"},
+                    HTTPStatus.BAD_REQUEST,
+                )
+            else:
+                self._send_json(
+                    {
+                        "workspace": workspace_info(self.server.database_path),
+                        "indexed_files": scan_source(
+                            str(active_source_id),
+                            database_path=self.server.database_path,
+                        ),
+                    }
+                )
             return
         if self.path.startswith("/api/v1/providers/") and self.path.endswith("/credentials"):
             provider = self.path.split("/")[4]
@@ -201,10 +200,13 @@ class _Handler(BaseHTTPRequestHandler):
             channel = self.path.split("/")[4]
             try:
                 payload = self._read_json()
+                values: dict[str, str] = {}
                 for key in ("app_id", "app_secret", "user_open_id", "chat_id"):
                     value = str(payload.get(key, "")).strip()
                     if not value:
                         raise ValueError(f"{key}_required")
+                    values[key] = value
+                for key, value in values.items():
                     set_secret(f"channel:{channel}:{key}", value)
                 self._send_json({"channel": channel, "configured": True})
             except (ValueError, RuntimeError, TypeError) as exc:
@@ -285,8 +287,8 @@ class _Handler(BaseHTTPRequestHandler):
             payload = self._read_json()
             step_key = str(payload.get("step_key", "")).strip()
             detail = payload.get("detail")
-            operation = skip_step if payload.get("skipped") else complete_step
-            operation(
+            self._validate_onboarding_step(step_key, detail)
+            complete_step(
                 step_key,
                 detail=str(detail) if detail is not None else None,
                 database_path=self.server.database_path,
@@ -298,6 +300,72 @@ class _Handler(BaseHTTPRequestHandler):
             )
             return
         self._send_json(get_status(self.server.database_path))
+
+    def _data_sources_payload(self) -> dict[str, object]:
+        """Return registered sources with the workspace vault selected by default."""
+        sources = list_sources(database_path=self.server.database_path)
+        info = workspace_info(self.server.database_path)
+        vault_path = info.get("vault_path")
+        active_source_id: str | None = None
+        if vault_path:
+            vault = Path(str(vault_path)).resolve()
+            for source in sources:
+                if Path(str(source["root_path"])).resolve() == vault:
+                    active_source_id = str(source["id"])
+                    break
+        ordered = sorted(
+            sources,
+            key=lambda source: str(source["id"]) != active_source_id,
+        )
+        return {"sources": ordered, "active_source_id": active_source_id}
+
+    def _validate_onboarding_step(self, step_key: str, detail: object) -> None:
+        """Require real local state before a UI step may be marked complete."""
+        if step_key not in ONBOARDING_STEPS:
+            raise ValueError(f"Unknown onboarding step: {step_key}")
+        status = get_status(self.server.database_path)
+        position = ONBOARDING_STEPS.index(step_key)
+        completed = {
+            str(item["step_key"])
+            for item in status["steps"]
+            if item["status"] == "completed"
+        }
+        missing_previous = [
+            key for key in ONBOARDING_STEPS[:position] if key not in completed
+        ]
+        if missing_previous:
+            raise ValueError(f"previous_step_required:{missing_previous[0]}")
+        if step_key == "workspace":
+            if not workspace_info(self.server.database_path)["configured"]:
+                raise ValueError("workspace_not_configured")
+            return
+        if step_key == "provider":
+            provider = str(detail or "").strip()
+            provider_status = next(
+                (
+                    item
+                    for item in discovery_snapshot()["providers"]
+                    if item["name"] == provider
+                ),
+                None,
+            )
+            if not provider_status or not provider_status["configured"]:
+                raise ValueError("provider_not_configured")
+            return
+        if step_key == "channel":
+            required = ("app_id", "app_secret", "user_open_id", "chat_id")
+            if not all(get_secret(f"channel:feishu:{key}") for key in required):
+                raise ValueError("channel_not_configured")
+            return
+        profile_path = Path(
+            str(
+                workspace_info(self.server.database_path).get("vault_path") or ""
+            )
+        ) / "个人上下文.md"
+        if not profile_path.is_file() or not profile_path.read_text(
+            encoding="utf-8"
+        ).strip():
+            raise ValueError("profile_not_configured")
 
     def do_DELETE(self) -> None:  # noqa: N802
         if self.path not in {"/api/v1/files", "/api/v1/database/records"}:

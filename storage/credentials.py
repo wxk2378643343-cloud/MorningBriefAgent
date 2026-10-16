@@ -22,4 +22,10 @@ def get_secret(name: str) -> str | None:
         import keyring
     except ImportError:
         return os.getenv(name)
-    return keyring.get_password(SERVICE_NAME, name)
+    try:
+        return keyring.get_password(SERVICE_NAME, name)
+    except Exception:
+        # Headless CI and some minimal Linux desktop environments have the
+        # keyring package installed but no usable backend. Discovery must
+        # remain read-only and fall back to environment configuration there.
+        return os.getenv(name)

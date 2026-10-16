@@ -30,6 +30,27 @@ class ProviderDiscoveryTests(unittest.TestCase):
         agy = next(item for item in providers if item.name == "agy")
         self.assertTrue(agy.available)
 
+    def test_system_credentials_are_reflected_without_exposing_them(self):
+        configured_names = {
+            "provider:deepseek:api_key",
+            "channel:feishu:app_id",
+            "channel:feishu:app_secret",
+        }
+        with patch("core.agent.discovery.config.DEEPSEEK_API_KEY", ""), \
+             patch("core.agent.discovery.config.FEISHU_APP_ID", ""), \
+             patch("core.agent.discovery.config.FEISHU_APP_SECRET", ""), \
+             patch(
+                 "core.agent.discovery.get_secret",
+                 side_effect=lambda name: "secret-value"
+                 if name in configured_names else None,
+             ):
+            snapshot = discovery_snapshot()
+        providers = {item["name"]: item for item in snapshot["providers"]}
+        channels = {item["name"]: item for item in snapshot["channels"]}
+        self.assertTrue(providers["deepseek"]["configured"])
+        self.assertTrue(channels["feishu"]["configured"])
+        self.assertNotIn("secret-value", repr(snapshot))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -89,6 +89,75 @@ class DesktopWorkspaceTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_incomplete_channel_request_does_not_write_partial_credentials(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with patch("core.application.local_api.set_secret") as set_secret:
+                    with self.assertRaises(Exception):
+                        self._post(
+                            base + "/api/v1/channels/feishu/credentials",
+                            {
+                                "app_id": "app-id",
+                                "app_secret": "secret",
+                                "user_open_id": "user-id",
+                            },
+                        )
+                    set_secret.assert_not_called()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_workspace_source_is_selected_instead_of_project_demo(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            root = Path(temp_dir) / "workspace"
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                initialized = self._post(
+                    base + "/api/v1/workspace/initialize",
+                    {"root_path": str(root)},
+                )
+                payload = self._get(base + "/api/v1/data-sources")
+                self.assertEqual(payload["active_source_id"], initialized["source_id"])
+                self.assertEqual(len(payload["sources"]), 1)
+                self.assertEqual(
+                    Path(payload["sources"][0]["root_path"]),
+                    root / "vault",
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_onboarding_step_requires_real_configuration(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with self.assertRaises(Exception):
+                    self._post(
+                        base + "/api/v1/onboarding/complete",
+                        {"step_key": "workspace"},
+                    )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
     def test_agent_status_returns_latest_usage_without_exposing_secrets(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "server.sqlite3"

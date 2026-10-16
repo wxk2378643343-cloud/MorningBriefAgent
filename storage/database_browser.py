@@ -76,4 +76,7 @@ def _write(database_path: str | Path, table: str, record: dict[str, Any], key: A
                     f"UPDATE {table} SET {assignments} WHERE {TABLES[table]}=?",
                     [clean[name] for name in clean if name != TABLES[table]] + [key],
                 )
-        return rows(database_path, table)["rows"][0] if rows(database_path, table)["rows"] else {}
+        row = db.execute(
+            f"SELECT * FROM {table} WHERE {TABLES[table]} = ?", (key,)
+        ).fetchone()
+    return dict(row) if row is not None else {}

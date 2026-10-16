@@ -84,7 +84,7 @@ export function SetupScreen({
       <main className="setup-main">
         <div className="setup-intro"><span className="eyebrow">FIRST RUN</span><h1>先配置本地工作区</h1><p>选择你的本地文件位置，再配置 AI 和飞书。完成后才进入工作台。</p></div>
         <section className="setup-card">
-          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 已配置{status?.skipped_count ? ` · ${status.skipped_count} 项稍后配置` : ""}</span></div>
+          <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div></div>
           <div className="stepper">{ONBOARDING_STEPS.map((step, index) => { const Icon = step.icon; const done = index < currentIndex; const active = index === currentIndex; return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`} key={step.key}><div className="step-icon">{done ? <Check size={15} /> : <Icon size={16} />}</div><span>{step.label}</span>{index < ONBOARDING_STEPS.length - 1 && <ChevronRight className="step-arrow" size={15} />}</div>; })}</div>
           <div className="setup-content">
             {currentStep === "workspace" && <WorkspaceStep initialRoot={workspace?.root_path ?? workspace?.default_root_path ?? ""} onComplete={() => completeStep("workspace", "local workspace initialized")} />}
@@ -137,7 +137,7 @@ function ProviderStep({ providers, selected, onSelect, onComplete }) {
     setError("");
     try {
       const provider = providers.find((item) => item.name === selected);
-      if (!provider?.available && !provider?.configured) throw new Error("provider_unavailable");
+      if (selected !== "deepseek" && !provider?.available && !provider?.configured) throw new Error("provider_unavailable");
       if (selected === "deepseek" && !apiKey && !provider?.configured) throw new Error("api_key_required");
       if (selected === "deepseek" && apiKey) {
         const response = await fetch(apiUrl(`/api/v1/providers/${selected}/credentials`), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ api_key: apiKey }) });
