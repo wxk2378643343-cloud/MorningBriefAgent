@@ -44,10 +44,6 @@ export function WelcomeScreen({ onEnter }) {
   ];
   return (
     <div className="welcome-screen">
-      <header className="setup-topbar">
-        <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
-        <div className="welcome-local"><span className="pulse" />所有数据仅保存在本机</div>
-      </header>
       <main className="welcome-main">
         <div className="welcome-badge"><Sparkles size={15} /> YOUR LOCAL AI WORKSPACE</div>
         <h1>欢迎使用<br /><em>MorningBriefAgent</em></h1>
