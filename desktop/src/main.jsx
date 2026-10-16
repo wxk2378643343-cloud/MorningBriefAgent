@@ -18,6 +18,7 @@ import { apiUrl, probeLocalApi } from "./localApi";
 import WorkflowPage from "./pages/WorkflowPage";
 import DatabasePage from "./pages/DatabasePage";
 import FileTree from "./components/FileTree";
+import AppTopbar from "./components/AppTopbar";
 import { ONBOARDING_STEPS, SetupScreen, StartupScreen, WelcomeScreen } from "./components/onboarding/OnboardingScreen";
 
 const demoDiscovery = {
@@ -186,7 +187,7 @@ function App() {
       />
     );
   }
-  if (activeSection === "Agent 运行") return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div><div className="workspace-label">本地工作台</div><nav><NavItem icon={<LayoutDashboard size={17} />} label="工作台" active={false} onClick={() => setActiveSection("工作台")} /><NavItem icon={<FolderOpen size={17} />} label="文件与数据" active={false} onClick={() => setActiveSection("文件与数据")} /><NavItem icon={<Workflow size={17} />} label="工作流" active={false} onClick={() => setActiveSection("工作流")} /><NavItem icon={<Database size={17} />} label="数据库" active={false} onClick={() => setActiveSection("数据库")} /><NavItem icon={<Bot size={17} />} label="Agent 运行" active onClick={() => setActiveSection("Agent 运行")} /></nav></aside><main className="main"><header className="topbar"><div><span className="eyebrow">Runtime</span><h1>Agent 运行状态</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header><AgentRuntime serviceState={serviceState} /></main></div>;
+  if (activeSection === "Agent 运行") return <div className="app-shell"><aside className="sidebar"><div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div><div className="workspace-label">本地工作台</div><nav><NavItem icon={<LayoutDashboard size={17} />} label="工作台" active={false} onClick={() => setActiveSection("工作台")} /><NavItem icon={<FolderOpen size={17} />} label="文件与数据" active={false} onClick={() => setActiveSection("文件与数据")} /><NavItem icon={<Workflow size={17} />} label="工作流" active={false} onClick={() => setActiveSection("工作流")} /><NavItem icon={<Database size={17} />} label="数据库" active={false} onClick={() => setActiveSection("数据库")} /><NavItem icon={<Bot size={17} />} label="Agent 运行" active onClick={() => setActiveSection("Agent 运行")} /></nav></aside><main className="main"><AppTopbar eyebrow="Runtime" title="Agent 运行状态" serviceState={serviceState} serviceLabel={serviceLabel} /><AgentRuntime serviceState={serviceState} /></main></div>;
 
   return (
     <div className="app-shell">
@@ -203,7 +204,12 @@ function App() {
         <div className="sidebar-bottom"><NavItem icon={<Settings2 size={17} />} label="设置" active={activeSection === "设置"} onClick={() => setActiveSection("设置")} /><div className="local-only"><span /> 仅在本机运行</div></div>
       </aside>
       <main className="main">
-        <header className="topbar"><div><span className="eyebrow">{activeSection === "设置" ? "LOCAL SETTINGS" : activeSection === "工作台" ? "LOCAL WORKBENCH" : "MORNINGBRIEF AGENT"}</span><h1>{activeSection === "设置" ? "设置" : activeSection === "工作台" ? "你的本地 Agent 工作台" : activeSection}</h1></div><div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div></header>
+        <AppTopbar
+          eyebrow={activeSection === "设置" ? "LOCAL SETTINGS" : activeSection === "工作台" ? "LOCAL WORKBENCH" : "MORNINGBRIEF AGENT"}
+          title={activeSection === "设置" ? "设置" : activeSection === "工作台" ? "你的本地 Agent 工作台" : activeSection}
+          serviceState={serviceState}
+          serviceLabel={serviceLabel}
+        />
         {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage status={status} onOpenSetup={(stepKey) => {
           setSetupStep(stepKey);
           setSetupMode(true);
