@@ -46,11 +46,13 @@ def initialize_workspace(root_path: str | Path, *, database_path: str | Path | N
     for directory in WORKSPACE_DIRECTORIES:
         (root / directory).mkdir(parents=True, exist_ok=True)
     vault = root / "vault"
+    created_files: list[str] = []
     for relative_path, content in OBSIDIAN_LAYOUT.items():
         target = vault / relative_path
         target.parent.mkdir(parents=True, exist_ok=True)
         if not target.exists():
             target.write_text(content, encoding="utf-8")
+            created_files.append(str(target))
     database = root / "data" / "app.sqlite3"
     initialize(database)
     metadata_database = Path(database_path) if database_path else database
@@ -69,7 +71,9 @@ def initialize_workspace(root_path: str | Path, *, database_path: str | Path | N
         _set_setting(connection, "workspace_root", str(root))
         _set_setting(connection, "workspace_database", str(database))
         _set_setting(connection, "workspace_vault", str(root / "vault"))
-    return workspace_info(metadata_database)
+    result = workspace_info(metadata_database)
+    result["created_files"] = created_files
+    return result
 
 
 def workspace_info(database_path: str | Path | None = None) -> dict[str, Any]:

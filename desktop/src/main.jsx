@@ -126,22 +126,6 @@ function App() {
       }));
     }
   };
-  const skipRemainingSetup = async () => {
-    const pending = (status?.steps ?? []).filter((item) => item.status !== "completed" && item.step_key !== "workspace");
-    let nextStatus = status;
-    for (const item of pending) {
-      const response = await fetch(apiUrl("/api/v1/onboarding/complete"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ step_key: item.step_key, skipped: true, detail: "skipped; can be configured later" }),
-      });
-      if (response.ok) nextStatus = await response.json();
-    }
-    setStatus(nextStatus);
-    setSetupStep(null);
-    setMessage("已跳过后续配置，可在设置中重新配置");
-  };
-
   if (serviceState !== "ready") {
     return <StartupScreen serviceState={serviceState} serviceLabel={serviceLabel} onRetry={() => window.location.reload()} />;
   }
@@ -173,7 +157,6 @@ function App() {
             setSetupStep(ONBOARDING_STEPS[index - 1].key);
           }
         }}
-        onSkip={currentStep === "workspace" ? null : skipRemainingSetup}
         onCancel={() => {
           setSetupMode(false);
           setSetupStep(null);

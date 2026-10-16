@@ -182,6 +182,8 @@ class _Handler(BaseHTTPRequestHandler):
             try:
                 payload = self._read_json()
                 secret = str(payload.get("api_key", "")).strip()
+                if not secret:
+                    raise ValueError("api_key_required")
                 set_secret(f"provider:{provider}:api_key", secret)
                 self._send_json({"provider": provider, "configured": True})
             except (ValueError, RuntimeError, TypeError) as exc:
@@ -201,8 +203,9 @@ class _Handler(BaseHTTPRequestHandler):
                 payload = self._read_json()
                 for key in ("app_id", "app_secret", "user_open_id", "chat_id"):
                     value = str(payload.get(key, "")).strip()
-                    if value:
-                        set_secret(f"channel:{channel}:{key}", value)
+                    if not value:
+                        raise ValueError(f"{key}_required")
+                    set_secret(f"channel:{channel}:{key}", value)
                 self._send_json({"channel": channel, "configured": True})
             except (ValueError, RuntimeError, TypeError) as exc:
                 self._send_json({"error": "credential_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
