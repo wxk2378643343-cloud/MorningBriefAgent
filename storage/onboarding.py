@@ -19,6 +19,19 @@ ONBOARDING_STEPS = (
 def get_status(database_path: str | Path | None = None) -> dict[str, Any]:
     initialize(database_path)
     with connect(database_path) as connection:
+        # Before strict onboarding, optional setup steps could be persisted as
+        # "skipped". A skipped legacy record must never let a fresh desktop
+        # installation enter the workbench without real configuration.
+        connection.execute(
+            """
+            UPDATE onboarding_steps
+            SET status='pending',
+                detail=NULL,
+                completed_at=NULL,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE status='skipped'
+            """
+        )
         rows = connection.execute(
             "SELECT step_key, status, detail, completed_at "
             "FROM onboarding_steps ORDER BY rowid"
@@ -32,17 +45,16 @@ def get_status(database_path: str | Path | None = None) -> dict[str, Any]:
         for key in ONBOARDING_STEPS
     ]
     completed = sum(item["status"] == "completed" for item in steps)
-    skipped = sum(item["status"] == "skipped" for item in steps)
     current = next(
-        (item["step_key"] for item in steps if item["status"] not in {"completed", "skipped"}),
+        (item["step_key"] for item in steps if item["status"] != "completed"),
         None,
     )
     return {
         "steps": steps,
         "completed_count": completed,
-        "skipped_count": skipped,
+        "skipped_count": 0,
         "total_count": len(steps),
-        "complete": completed + skipped == len(steps),
+        "complete": completed == len(steps),
         "current_step": current,
     }
 
