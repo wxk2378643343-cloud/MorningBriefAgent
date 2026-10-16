@@ -381,6 +381,14 @@ export default function DesktopMenuBar({
             </div>
           )}
         </div>
+
+        {/* Window Drag Zone & Right Meta */}
+        <div className="menubar-drag-zone" data-tauri-drag-region />
+
+        <div className="menubar-right-meta">
+          <span className="menubar-live-dot" />
+          <span className="text-[11px] text-slate-500 font-medium">{serviceState === "ready" ? "8765 核心已连接" : "本地核心就绪"}</span>
+        </div>
       </nav>
 
       {/* About Modal */}

@@ -4,12 +4,9 @@ import {
   FolderOpen,
   Bot,
   Zap,
-  CheckCircle2,
-  Bell,
   Command,
   ChevronRight,
 } from "lucide-react";
-import DesktopMenuBar from "./DesktopMenuBar";
 
 export default function AppTopbar({
   eyebrow,
@@ -36,93 +33,80 @@ export default function AppTopbar({
   };
 
   return (
-    <div className="desktop-top-container">
-      {/* 1. Native Desktop Menu Bar (File, View, Workflow, Window) */}
-      <DesktopMenuBar
-        onNavigate={onNavigate}
-        activeSection={activeSection}
-        workspace={workspace}
-        onQuickRun={onQuickRun}
-        serviceState={serviceState}
-        serviceLabel={serviceLabel}
-      />
-
-      {/* 2. Main Executive App Topbar */}
-      <header className="desktop-app-topbar">
-        {/* Left: Module Breadcrumb & Active Workspace Tag */}
-        <div className="topbar-left-zone">
-          <div className="topbar-breadcrumb">
-            <span className="topbar-eyebrow">{eyebrow || "LOCAL WORKBENCH"}</span>
-            <div className="topbar-title-wrap">
-              <h1 className="topbar-main-title">{title}</h1>
-              {workspace && (
-                <button
-                  type="button"
-                  className="topbar-workspace-chip"
-                  onClick={() => onNavigate && onNavigate("文件与数据")}
-                  title={`当前挂载知识库: ${workspace.root_path || workspaceName}`}
-                >
-                  <FolderOpen size={12} className="text-indigo-500" />
-                  <span className="truncate max-w-[180px]">{workspace.name || "知识库已挂载"}</span>
-                  <ChevronRight size={10} className="text-slate-400" />
-                </button>
-              )}
-            </div>
+    <header className="desktop-app-topbar">
+      {/* Left: Module Breadcrumb & Active Workspace Tag */}
+      <div className="topbar-left-zone">
+        <div className="topbar-breadcrumb">
+          <span className="topbar-eyebrow">{eyebrow || "LOCAL WORKBENCH"}</span>
+          <div className="topbar-title-wrap">
+            <h1 className="topbar-main-title">{title}</h1>
+            {workspace && (
+              <button
+                type="button"
+                className="topbar-workspace-chip"
+                onClick={() => onNavigate && onNavigate("文件与数据")}
+                title={`当前挂载知识库: ${workspace.root_path || workspaceName}`}
+              >
+                <FolderOpen size={12} className="text-indigo-500" />
+                <span className="truncate max-w-[180px]">{workspace.name || "知识库已挂载"}</span>
+                <ChevronRight size={10} className="text-slate-400" />
+              </button>
+            )}
           </div>
         </div>
+      </div>
 
-        {/* Center: Universal Command Search Capsule (Raycast / Linear style) */}
-        <div className="topbar-center-zone">
-          <div className={`topbar-search-capsule ${searchFocused ? "is-focused" : ""}`}>
-            <Search size={14} className="search-icon" />
-            <input
-              type="text"
-              placeholder="搜索知识库、工作流或业务记录... (Enter)"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setSearchFocused(true)}
-              onBlur={() => setSearchFocused(false)}
-              onKeyDown={handleSearchSubmit}
-              className="search-input"
-            />
-            <div className="shortcut-badge">
-              <Command size={10} />
-              <span>K</span>
-            </div>
+      {/* Center: Universal Command Search Capsule (Raycast / Linear style) */}
+      <div className="topbar-center-zone">
+        <div className={`topbar-search-capsule ${searchFocused ? "is-focused" : ""}`}>
+          <Search size={14} className="search-icon" />
+          <input
+            type="text"
+            placeholder="搜索知识库、工作流或业务记录... (Enter)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setSearchFocused(false)}
+            onKeyDown={handleSearchSubmit}
+            className="search-input"
+          />
+          <div className="shortcut-badge">
+            <Command size={10} />
+            <span>K</span>
           </div>
         </div>
+      </div>
 
-        {/* Right: Desktop Controls & Live Service Indicators (Settings button removed per user request) */}
-        <div className="topbar-right-zone">
-          {/* Local Core Service Latency Pill */}
-          <div className={`service-status-pill ${isReady ? "ready" : "offline"}`} title={serviceLabel}>
-            <span className="pulse" />
-            <span className="pill-text">{isReady ? "核心 8765 活跃" : "服务断开"}</span>
-          </div>
-
-          {/* Feishu Bot Daemon Pill */}
-          <div
-            className="bot-daemon-pill"
-            title="飞书长连接机器人后台守护服务 (pythonw 进程运行中，零弹窗)"
-          >
-            <Bot size={13} className="text-emerald-600" />
-            <span>飞书守护就绪</span>
-          </div>
-
-          {/* Quick Run Workflow Button */}
-          <button
-            type="button"
-            className="topbar-action-icon-btn"
-            onClick={() => {
-              if (onQuickRun) onQuickRun();
-              else if (onNavigate) onNavigate("工作流");
-            }}
-            title="一键唤醒工作流调度中心"
-          >
-            <Zap size={15} className="text-amber-500" />
-          </button>
+      {/* Right: Desktop Controls & Live Service Indicators (No settings button) */}
+      <div className="topbar-right-zone">
+        {/* Local Core Service Latency Pill */}
+        <div className={`service-status-pill ${isReady ? "ready" : "offline"}`} title={serviceLabel}>
+          <span className="pulse" />
+          <span className="pill-text">{isReady ? "核心 8765 活跃" : "服务断开"}</span>
         </div>
-      </header>
-    </div>
+
+        {/* Feishu Bot Daemon Pill */}
+        <div
+          className="bot-daemon-pill"
+          title="飞书长连接机器人后台守护服务 (pythonw 进程运行中，零弹窗)"
+        >
+          <Bot size={13} className="text-emerald-600" />
+          <span>飞书守护就绪</span>
+        </div>
+
+        {/* Quick Run Workflow Button */}
+        <button
+          type="button"
+          className="topbar-action-icon-btn"
+          onClick={() => {
+            if (onQuickRun) onQuickRun();
+            else if (onNavigate) onNavigate("工作流");
+          }}
+          title="一键唤醒工作流调度中心"
+        >
+          <Zap size={15} className="text-amber-500" />
+        </button>
+      </div>
+    </header>
   );
 }

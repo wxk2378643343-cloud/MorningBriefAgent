@@ -234,7 +234,14 @@ function App() {
     );
   }
   return (
-    <ApplicationShell activeSection={activeSection} onNavigate={setActiveSection}>
+    <ApplicationShell
+      activeSection={activeSection}
+      onNavigate={setActiveSection}
+      workspace={workspace}
+      serviceState={serviceState}
+      serviceLabel={serviceLabel}
+      onQuickRun={() => setActiveSection("工作流")}
+    >
       <main className="main">
         <AppTopbar
           eyebrow={activeSection === "设置" ? "LOCAL SETTINGS" : activeSection === "工作台" ? "LOCAL WORKBENCH" : "MORNINGBRIEF AGENT"}
