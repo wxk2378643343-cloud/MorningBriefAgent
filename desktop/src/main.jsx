@@ -192,12 +192,12 @@ function App() {
 
 function WorkbenchQuickNav({ onOpen }) {
   const items = [
-    ["文件与数据", "查看本地 Obsidian 文件树", FolderOpen],
+    ["文件与数据", "查看本地知识库文件树", FolderOpen],
     ["工作流", "查看和运行本地工作流", Workflow],
     ["数据库", "查看和管理业务记录", Database],
     ["Agent 运行", "查看运行、Token 和同步状态", Bot],
   ];
-  return <section className="quick-nav"><div><span className="eyebrow">LOCAL WORKBENCH</span><h2>你的本地 Agent 工作台</h2><p>你的工作区、Obsidian 文件和业务数据都保留在本机，选择一个入口开始使用。</p></div><div className="quick-nav-grid">{items.map(([label, description, Icon]) => <button type="button" className="quick-nav-card" key={label} onClick={() => onOpen(label)}><span className="quick-nav-icon"><Icon size={18} /></span><strong>{label}</strong><span>{description}</span><ChevronRight size={16} /></button>)}</div></section>;
+  return <section className="quick-nav"><div><span className="eyebrow">LOCAL WORKBENCH</span><h2>你的本地 Agent 工作台</h2><p>你的工作区、知识库文件和业务数据都保留在本机，选择一个入口开始使用。</p></div><div className="quick-nav-grid">{items.map(([label, description, Icon]) => <button type="button" className="quick-nav-card" key={label} onClick={() => onOpen(label)}><span className="quick-nav-icon"><Icon size={18} /></span><strong>{label}</strong><span>{description}</span><ChevronRight size={16} /></button>)}</div></section>;
 }
 function SectionPlaceholder({ section }) {
   const descriptions = {

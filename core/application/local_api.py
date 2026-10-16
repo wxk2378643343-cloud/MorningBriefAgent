@@ -143,7 +143,7 @@ class _Handler(BaseHTTPRequestHandler):
                 root_path = str(payload.get("root_path", "")).strip() or str(default_workspace_root())
                 result = initialize_workspace(root_path, database_path=self.server.database_path)
                 source_id = register_source(
-                    "Obsidian 知识库",
+                    "知识库",
                     result["vault_path"],
                     database_path=self.server.database_path,
                 )
