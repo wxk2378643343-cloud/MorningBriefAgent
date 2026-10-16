@@ -18,6 +18,25 @@ WORKSPACE_DIRECTORIES = (
     "config",
 )
 
+OBSIDIAN_LAYOUT = {
+    "00-首页.md": "# MorningBrief 本地工作台\n\n这是你的本地 Agent 知识库入口。\n\n- [[01-今日计划/README]]\n- [[02-待办/README]]\n- [[03-日程/README]]\n- [[04-新闻简报/README]]\n- [[05-知识库/README]]\n- [[06-聊天复盘/README]]\n- [[07-饮食记录/README]]\n- [[08-运动记录/README]]\n- [[09-基金投资/README]]\n- [[99-归档/README]]\n",
+    "01-今日计划/README.md": "# 今日计划\n\n记录每日计划、重点和复盘入口。\n",
+    "02-待办/README.md": "# 待办\n\nAgent 整理的待办事项会写入这里。\n",
+    "03-日程/README.md": "# 日程\n\n记录确认后的日程和时间安排。\n",
+    "04-新闻简报/README.md": "# 新闻简报\n\n定时新闻分析和晨报会归档到这里。\n",
+    "05-知识库/README.md": "# 知识库\n\n放置你的 Markdown、学习资料和长期上下文。\n",
+    "06-聊天复盘/README.md": "# 聊天复盘\n\n记录 Agent 对聊天和工作内容的复盘结果。\n",
+    "07-饮食记录/README.md": "# 饮食记录\n\n记录饮食、热量和营养数据。\n",
+    "08-运动记录/README.md": "# 运动记录\n\n记录训练、运动和身体状态。\n",
+    "09-基金投资/README.md": "# 基金投资\n\n记录基金、股票和投资分析结果。\n",
+    "99-归档/README.md": "# 归档\n\n存放已经完成或不再活跃的内容。\n",
+}
+
+def default_workspace_root() -> Path:
+    """Return a safe local default without requiring a cloud or user prompt."""
+    preferred = Path("D:/MorningBriefWorkspace")
+    return preferred if preferred.anchor and preferred.drive and preferred.drive.upper() == "D:" else Path.home() / "MorningBriefWorkspace"
+
 
 def initialize_workspace(root_path: str | Path, *, database_path: str | Path | None = None) -> dict[str, Any]:
     root = Path(root_path).expanduser().resolve()
@@ -26,6 +45,12 @@ def initialize_workspace(root_path: str | Path, *, database_path: str | Path | N
         raise NotADirectoryError(str(root))
     for directory in WORKSPACE_DIRECTORIES:
         (root / directory).mkdir(parents=True, exist_ok=True)
+    vault = root / "vault"
+    for relative_path, content in OBSIDIAN_LAYOUT.items():
+        target = vault / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            target.write_text(content, encoding="utf-8")
     database = root / "data" / "app.sqlite3"
     initialize(database)
     metadata_database = Path(database_path) if database_path else database
@@ -57,6 +82,7 @@ def workspace_info(database_path: str | Path | None = None) -> dict[str, Any]:
     return {
         "configured": bool(root and root.is_dir()),
         "root_path": str(root) if root else None,
+        "default_root_path": str(default_workspace_root()),
         "database_path": str(root / "data" / "app.sqlite3") if root else str(database),
         "vault_path": str(root / "vault") if root else None,
         "directories": [str(root / item) for item in WORKSPACE_DIRECTORIES] if root else [],

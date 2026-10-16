@@ -35,6 +35,29 @@ export function StartupScreen({ serviceState, serviceLabel, onRetry }) {
   );
 }
 
+export function WelcomeScreen({ onEnter }) {
+  return (
+    <div className="welcome-screen">
+      <header className="setup-topbar">
+        <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
+        <div className="welcome-local"><span className="pulse" />所有数据仅保存在本机</div>
+      </header>
+      <main className="welcome-main">
+        <div className="welcome-badge"><Sparkles size={15} /> YOUR LOCAL AI WORKSPACE</div>
+        <h1>欢迎使用<br /><em>MorningBriefAgent</em></h1>
+        <p className="welcome-lead">把信息整理、工作复盘和行动规划交给一个真正属于你的本地 Agent。</p>
+        <div className="welcome-features">
+          <div><span className="welcome-feature-icon">⌁</span><strong>连接你的信息</strong><p>读取本地 Markdown、聊天记录和业务数据，形成统一上下文。</p></div>
+          <div><span className="welcome-feature-icon">✦</span><strong>理解你的工作</strong><p>通过待办、日程、新闻和知识库工作流，减少重复整理。</p></div>
+          <div><span className="welcome-feature-icon">↗</span><strong>辅助你的行动</strong><p>让 Agent 输出清晰的结论、提醒和下一步建议。</p></div>
+        </div>
+        <button className="primary welcome-enter" type="button" onClick={onEnter}>进入我的工作台 <ChevronRight size={16} /></button>
+        <small className="welcome-footnote">本地文件由你掌控，之后可以在设置中随时修改。</small>
+      </main>
+    </div>
+  );
+}
+
 export function SetupScreen({
   serviceLabel,
   serviceState,
@@ -65,7 +88,7 @@ export function SetupScreen({
           <div className="setup-header"><div><span className="eyebrow">Setup</span><h3>本地初始化向导</h3></div><span className="progress-label">{status?.completed_count ?? 0} / 4 已配置{status?.skipped_count ? ` · ${status.skipped_count} 项稍后配置` : ""}</span></div>
           <div className="stepper">{ONBOARDING_STEPS.map((step, index) => { const Icon = step.icon; const done = index < currentIndex; const active = index === currentIndex; return <div className={`step ${active ? "active" : ""} ${done ? "done" : ""}`} key={step.key}><div className="step-icon">{done ? <Check size={15} /> : <Icon size={16} />}</div><span>{step.label}</span>{index < ONBOARDING_STEPS.length - 1 && <ChevronRight className="step-arrow" size={15} />}</div>; })}</div>
           <div className="setup-content">
-            {currentStep === "workspace" && <WorkspaceStep initialRoot={workspace?.root_path ?? ""} onComplete={() => completeStep("workspace", "local workspace initialized")} />}
+            {currentStep === "workspace" && <WorkspaceStep initialRoot={workspace?.root_path ?? workspace?.default_root_path ?? ""} onComplete={() => completeStep("workspace", "local workspace initialized")} />}
             {currentStep === "provider" && <ProviderStep providers={discovery.providers} selected={selectedProvider} onSelect={setSelectedProvider} onComplete={() => completeStep("provider", selectedProvider)} />}
             {currentStep === "channel" && <ChannelStep channels={discovery.channels} selected={selectedChannel} onSelect={setSelectedChannel} onComplete={() => completeStep("channel", selectedChannel)} />}
             {currentStep === "profile" && <ProfileStep onComplete={() => completeStep("profile", "profile ready")} />}
@@ -104,7 +127,7 @@ function WorkspaceStep({ initialRoot, onComplete }) {
       if (typeof selected === "string") setRoot(selected);
     } catch { setError("系统文件夹选择器打开失败，请直接输入本地路径。"); }
   };
-  return <div className="step-panel"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>配置本地工作区</h4><p>选择你自己的本地目录。应用只会在该目录建立必要的本地目录和 SQLite，不上传任何内容。</p><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
+  return <div className="step-panel workspace-step"><div className="panel-icon blue"><FolderOpen size={21} /></div><div className="panel-copy"><h4>配置本地工作区</h4><p>选择你自己的本地目录。应用会在这里建立数据库、日志、附件和完整的 Obsidian 知识库结构，不上传任何内容。</p><div className="workspace-preview"><span className="workspace-preview-title">初始化后会得到</span><div className="workspace-preview-grid"><span><b>⌂</b>00-首页.md</span><span><b>✓</b>02-待办</span><span><b>◷</b>03-日程</span><span><b>◌</b>04-新闻简报</span><span><b>✦</b>05-知识库</span><span><b>＋</b>07-饮食记录</span></div></div><div className="path-row"><input value={root} onChange={(event) => { setRoot(event.target.value); setError(""); }} placeholder="例如：D:\\MorningBriefWorkspace" /><button type="button" className="secondary" onClick={chooseDirectory}>选择目录</button></div><div className="setup-actions"><button className="primary" disabled={!root || busy} onClick={submit}>{busy ? "初始化中…" : "初始化本地工作区"} <ChevronRight size={16} /></button></div>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
 
 function ProviderStep({ providers, selected, onSelect, onComplete }) {
