@@ -31,6 +31,10 @@ const demoDiscovery = {
   ],
 };
 
+const DesktopFileWorkspace = React.lazy(
+  () => import("./components/file-workspace/FileWorkspace"),
+);
+
 function App() {
   const [activeSection, setActiveSection] = useState("工作台");
   const [serviceState, setServiceState] = useState("starting");
@@ -174,7 +178,7 @@ function App() {
           serviceState={serviceState}
           serviceLabel={serviceLabel}
         />
-        {activeSection === "文件与数据" ? <FileWorkspace serviceState={serviceState} /> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage status={status} onOpenSetup={(stepKey) => {
+        {activeSection === "文件与数据" ? <React.Suspense fallback={<section className="placeholder-page"><p>正在打开本地文件工作台…</p></section>}><DesktopFileWorkspace serviceState={serviceState} /></React.Suspense> : activeSection === "工作流" ? <WorkflowPage /> : activeSection === "数据库" ? <DatabasePage /> : activeSection === "设置" ? <SettingsPage status={status} onOpenSetup={(stepKey) => {
           setSetupStep(stepKey);
           setSetupMode(true);
         }} onReconfigure={async () => { await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" }); setSetupStep(null); setSetupMode(true); setActiveSection("工作台"); }} /> : activeSection !== "工作台" ? <SectionPlaceholder section={activeSection} /> : <><WorkbenchQuickNav onOpen={setActiveSection} /><section className="hero">
