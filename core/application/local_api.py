@@ -23,7 +23,7 @@ from storage.data_sources import (
     scan_source,
 )
 from storage.onboarding import complete_step, get_status, reset_all, skip_step
-from storage.workspace import initialize_workspace, save_personal_context, workspace_info
+from storage.workspace import default_workspace_root, initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
 from core.runtime.config import PROJECT_ROOT
 from storage.database_browser import create as create_record, delete as delete_record, rows as database_rows, tables as database_tables, update as update_record
@@ -148,13 +148,11 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path in {"/api/v1/workspace/select", "/api/v1/workspace/initialize"}:
             try:
                 payload = self._read_json()
-                root_path = str(payload.get("root_path", "")).strip()
-                if not root_path:
-                    raise ValueError("root_path_required")
+                root_path = str(payload.get("root_path", "")).strip() or str(default_workspace_root())
                 result = initialize_workspace(root_path, database_path=self.server.database_path)
                 source_id = register_source(
-                    Path(root_path).name or "Local Workspace",
-                    root_path,
+                    "Obsidian 知识库",
+                    result["vault_path"],
                     database_path=self.server.database_path,
                 )
                 result["source_id"] = source_id

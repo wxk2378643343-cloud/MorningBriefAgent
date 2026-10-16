@@ -8,7 +8,7 @@ from urllib.request import Request, urlopen
 
 from core.application.local_api import create_local_server
 from storage.sqlite import initialize
-from storage.workspace import WORKSPACE_DIRECTORIES, initialize_workspace
+from storage.workspace import OBSIDIAN_LAYOUT, WORKSPACE_DIRECTORIES, default_workspace_root, initialize_workspace
 from storage.usage import record_usage
 
 
@@ -19,9 +19,12 @@ class DesktopWorkspaceTests(unittest.TestCase):
             root = Path(temp_dir) / "workspace"
             info = initialize_workspace(root, database_path=database)
             self.assertTrue(info["configured"])
+            self.assertEqual(info["default_root_path"], str(default_workspace_root()))
             for directory in WORKSPACE_DIRECTORIES:
                 self.assertTrue((root / directory).is_dir())
             self.assertTrue((root / "data" / "app.sqlite3").is_file())
+            for relative_path in OBSIDIAN_LAYOUT:
+                self.assertTrue((root / "vault" / relative_path).is_file())
 
     def test_api_saves_profile_and_never_accepts_secret_as_database_setting(self):
         with tempfile.TemporaryDirectory() as temp_dir:
