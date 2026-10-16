@@ -163,7 +163,13 @@ function App() {
         completeStep={completeStep}
         onBack={() => {
           const index = ONBOARDING_STEPS.findIndex((step) => step.key === (setupStep ?? currentStep));
-          setSetupStep(ONBOARDING_STEPS[Math.max(0, index - 1)].key);
+          if (index === 0) {
+            setSetupMode(false);
+            setSetupStep(null);
+            setShowWelcome(true);
+          } else {
+            setSetupStep(ONBOARDING_STEPS[index - 1].key);
+          }
         }}
         onSkip={currentStep === "workspace" ? null : skipRemainingSetup}
         onCancel={() => {
