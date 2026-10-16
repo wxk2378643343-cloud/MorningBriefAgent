@@ -82,10 +82,6 @@ export function SetupScreen({
 }) {
   return (
     <div className="setup-screen">
-      <header className="setup-topbar">
-        <div className="brand"><span className="brand-mark"><Sparkles size={17} /></span><span>MorningBrief</span></div>
-        <div className={`connection connection-${serviceState}`}><span className="pulse" />{serviceLabel}</div>
-      </header>
       <main className="setup-main">
         <div className="setup-intro"><span className="eyebrow">FIRST RUN</span><h1>先配置本地工作区</h1><p>选择你的本地文件位置，再配置 AI 和飞书。完成后才进入工作台。</p></div>
         <section className="setup-card">
