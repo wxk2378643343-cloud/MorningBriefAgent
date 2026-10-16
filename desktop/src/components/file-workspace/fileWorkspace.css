@@ -1,5 +1,6 @@
 .desktop-file-workspace {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: min(760px, calc(100vh - 148px));
   margin: -8px -4px 0;
   border: 1px solid rgba(0, 0, 0, .12);
@@ -48,7 +49,12 @@
 .workspace-toolbar-actions button:hover,
 .editor-action:hover { background: #e9e9e9; color: #111; }
 
-.desktop-file-layout { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 0; }
+.desktop-file-layout {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 248px minmax(0, 1fr);
+  min-height: 0;
+}
 .explorer-panel { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid rgba(0, 0, 0, .11); background: #f7f7f7; }
 .explorer-title { display: flex; align-items: center; justify-content: space-between; padding: 14px 14px 9px; color: #656565; font-size: 10px; font-weight: 750; letter-spacing: .08em; }
 .explorer-title small { color: #9a9a9a; font-size: 10px; font-weight: 500; letter-spacing: 0; }
