@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
+    "tauri:run": "src-tauri\\target\\debug\\morningbrief-desktop.exe",
     "tauri:build": "tauri build"
   },
   "dependencies": {

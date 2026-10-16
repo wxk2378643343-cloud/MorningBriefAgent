@@ -1,14 +1,11 @@
 import React, { useState } from "react";
 import {
   Search,
-  Settings,
   FolderOpen,
   Bot,
   Zap,
-  CheckCircle2,
-  Bell,
   Command,
-  ChevronRight
+  ChevronRight,
 } from "lucide-react";
 
 export default function AppTopbar({
@@ -19,7 +16,7 @@ export default function AppTopbar({
   serviceState,
   serviceLabel,
   workspace,
-  onQuickRun
+  onQuickRun,
 }) {
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -80,7 +77,7 @@ export default function AppTopbar({
         </div>
       </div>
 
-      {/* Right: Desktop Controls & Live Service Indicators */}
+      {/* Right: Desktop Controls & Live Service Indicators (No settings button) */}
       <div className="topbar-right-zone">
         {/* Local Core Service Latency Pill */}
         <div className={`service-status-pill ${isReady ? "ready" : "offline"}`} title={serviceLabel}>
@@ -108,17 +105,6 @@ export default function AppTopbar({
           title="一键唤醒工作流调度中心"
         >
           <Zap size={15} className="text-amber-500" />
-        </button>
-
-        {/* Settings Navigation Button */}
-        <button
-          type="button"
-          className={`topbar-settings-btn ${activeSection === "设置" ? "active" : ""}`}
-          onClick={() => onNavigate && onNavigate("设置")}
-          title="打开系统配置中心"
-        >
-          <Settings size={15} />
-          <span>设置</span>
         </button>
       </div>
     </header>

@@ -2164,3 +2164,318 @@ h2 em { color:#6e6e73; }
     align-items: flex-start;
   }
 }
+
+/* ==========================================================================
+   Desktop Native Menu Bar & Top Application Shell Frame (VS Code / Antigravity Style)
+   ========================================================================== */
+
+.app-shell-frame {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  background: #f5f5f7;
+}
+
+.shell-top-chrome {
+  height: 38px;
+  width: 100%;
+  flex-shrink: 0;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  display: flex;
+  align-items: center;
+  position: relative;
+  z-index: 999;
+}
+
+.shell-workspace-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.shell-workspace-body .sidebar {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  flex: 0 0 236px;
+  width: 236px;
+  overflow-y: auto;
+  border-right: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.shell-workspace-body .main {
+  flex: 1 1 auto;
+  width: calc(100% - 236px);
+  min-width: 0;
+  height: 100%;
+  overflow-y: auto;
+  padding: 28px 50px 60px;
+}
+
+.shell-top-chrome .desktop-native-menubar {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 16px;
+  background: transparent;
+  backdrop-filter: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  user-select: none;
+  position: relative;
+  z-index: 50;
+}
+
+.menubar-brand {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 12px;
+  margin-right: 6px;
+  border-right: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.menubar-item-wrap {
+  position: relative;
+}
+
+.menubar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #374151;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.menubar-btn span {
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: inherit;
+}
+
+.menubar-btn:hover,
+.menubar-btn.is-active {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111827;
+}
+
+.menubar-drag-zone {
+  flex: 1;
+  height: 100%;
+}
+
+.menubar-right-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 12px;
+  font-size: 11px;
+  color: #64748b;
+  user-select: none;
+}
+
+.menubar-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+/* Floating Dropdown Menu */
+.menubar-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 270px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dropdown-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 500;
+  color: #1f2937;
+  transition: all 0.12s ease;
+}
+
+.dropdown-item .item-label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.dropdown-item .item-label span {
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.dropdown-item.active-page {
+  background: #eef2ff;
+  color: #4338ca;
+  font-weight: 600;
+}
+
+.shortcut-tag {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  background: rgba(0, 0, 0, 0.04);
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.dropdown-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+  margin: 4px 6px;
+}
+
+.dropdown-info-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: #64748b;
+}
+
+/* About Modal */
+.menubar-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+  z-index: 200;
+  display: grid;
+  place-items: center;
+}
+
+.menubar-about-modal {
+  width: 420px;
+  max-width: 90vw;
+  background: #ffffff;
+  border-radius: 20px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.18);
+  overflow: hidden;
+}
+
+.about-modal-header {
+  padding: 28px 24px 20px;
+  text-align: center;
+  background: linear-gradient(180deg, #fafafa 0%, #ffffff 100%);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.about-icon-capsule {
+  width: 52px;
+  height: 52px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: #000000;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.about-modal-header h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.version-pill {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.about-modal-body {
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.about-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.about-meta-row span {
+  color: #6b7280;
+}
+
+.about-meta-row strong {
+  color: #111827;
+  font-weight: 600;
+}
+
+.status-badge-inline {
+  background: #ecfdf5;
+  color: #059669;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.about-modal-footer {
+  padding: 16px 24px;
+  background: #fafafa;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  display: flex;
+  justify-content: flex-end;
+}
+
