@@ -30,16 +30,17 @@ class OnboardingStateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 complete_step("secrets", database_path=database)
 
-    def test_skipped_optional_steps_are_not_counted_as_configured(self):
+    def test_legacy_skipped_steps_are_migrated_back_to_pending(self):
         with self._database() as database:
             complete_step("workspace", detail="initialized", database_path=database)
             skip_step("provider", detail="later", database_path=database)
             skip_step("channel", detail="later", database_path=database)
             skip_step("profile", detail="later", database_path=database)
             status = get_status(database)
-            self.assertTrue(status["complete"])
+            self.assertFalse(status["complete"])
             self.assertEqual(status["completed_count"], 1)
-            self.assertEqual(status["skipped_count"], 3)
+            self.assertEqual(status["skipped_count"], 0)
+            self.assertEqual(status["current_step"], "provider")
 
     def _database(self):
         temp_dir = tempfile.TemporaryDirectory()
