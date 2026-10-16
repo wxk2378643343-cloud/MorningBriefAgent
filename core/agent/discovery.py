@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from core.runtime import config
+from storage.credentials import get_secret
 
 
 @dataclass(frozen=True)
@@ -21,15 +22,18 @@ class CapabilityStatus:
 
 def discover_providers() -> list[CapabilityStatus]:
     """Return availability without exposing credentials or starting processes."""
+    deepseek_configured = bool(
+        config.DEEPSEEK_API_KEY or get_secret("provider:deepseek:api_key")
+    )
     return [
         CapabilityStatus(
             name="deepseek",
             kind="api",
-            available=bool(config.DEEPSEEK_API_KEY),
-            configured=bool(config.DEEPSEEK_API_KEY),
+            available=deepseek_configured,
+            configured=deepseek_configured,
             detail=(
                 f"model={config.DEEPSEEK_MODEL}"
-                if config.DEEPSEEK_API_KEY else "API key not configured"
+                if deepseek_configured else "API key not configured"
             ),
         ),
         CapabilityStatus(
@@ -60,14 +64,16 @@ def discover_providers() -> list[CapabilityStatus]:
 
 
 def discover_channels() -> list[CapabilityStatus]:
+    app_id = config.FEISHU_APP_ID or get_secret("channel:feishu:app_id")
+    app_secret = config.FEISHU_APP_SECRET or get_secret("channel:feishu:app_secret")
     return [
         CapabilityStatus(
             name="feishu",
             kind="channel",
-            available=bool(config.FEISHU_APP_ID and config.FEISHU_APP_SECRET),
-            configured=bool(config.FEISHU_APP_ID and config.FEISHU_APP_SECRET),
+            available=bool(app_id and app_secret),
+            configured=bool(app_id and app_secret),
             detail="app credentials configured"
-            if (config.FEISHU_APP_ID and config.FEISHU_APP_SECRET)
+            if (app_id and app_secret)
             else "app credentials not configured",
         )
     ]

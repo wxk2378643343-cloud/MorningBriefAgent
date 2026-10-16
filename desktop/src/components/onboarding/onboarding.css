@@ -27,9 +27,8 @@
 .setup-intro h1 { margin: 10px 0; color: #1d1d1f; font-size: 34px; font-weight: 650; letter-spacing: -.05em; }
 .setup-intro p { margin: 0; color: #6e6e73; font-size: 14px; }
 .setup-card { padding: 26px 30px 30px; }
-.setup-header { display: flex; justify-content: space-between; align-items: start; }
+.setup-header { display: flex; align-items: start; }
 .setup-header h3 { margin: 7px 0 0; color: #1d1d1f; font-size: 18px; }
-.progress-label { color: #6e6e73; font-size: 12px; }
 
 .stepper {
   display: flex;

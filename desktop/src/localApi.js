@@ -18,3 +18,12 @@ export async function probeLocalApi(timeoutMs = 1200) {
 export function apiUrl(path) {
   return `${LOCAL_API_BASE}${path}`;
 }
+
+export async function fetchJson(path, options) {
+  const response = await fetch(apiUrl(path), options);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || "local_api_request_failed");
+  }
+  return payload;
+}

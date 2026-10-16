@@ -23,9 +23,13 @@ class LocalApplicationApiTests(unittest.TestCase):
                 self.assertEqual(status["current_step"], "workspace")
                 discovery = self._get(f"{base}/api/v1/providers/discovery")
                 self.assertIn("providers", discovery)
+                self._post(
+                    f"{base}/api/v1/workspace/initialize",
+                    {"root_path": str(Path(temp_dir) / "workspace")},
+                )
                 completed = self._post(
                     f"{base}/api/v1/onboarding/complete",
-                    {"step_key": "workspace", "detail": "initialized"},
+                    {"step_key": "workspace", "detail": "local workspace initialized"},
                 )
                 self.assertEqual(completed["current_step"], "provider")
             finally:
