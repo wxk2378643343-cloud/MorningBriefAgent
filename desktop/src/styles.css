@@ -1509,3 +1509,658 @@ h2 em { color:#6e6e73; }
   background: #161b22;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
+
+/* ==========================================================================
+   Desktop Application Topbar & Executive Workbench Home (Apple / Linear)
+   ========================================================================== */
+
+/* Modern Desktop Application Topbar */
+.desktop-app-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 14px 20px;
+  margin-bottom: 24px;
+  background: rgba(255, 255, 255, 0.88);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 18px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03);
+}
+
+.topbar-left-zone {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.topbar-breadcrumb {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.topbar-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #8e8e93;
+}
+
+.topbar-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.topbar-main-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  color: #1d1d1f;
+  white-space: nowrap;
+}
+
+.topbar-workspace-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #f0f2f8;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  font-size: 11px;
+  font-weight: 500;
+  color: #48484a;
+  cursor: pointer;
+  transition: all 0.16s ease;
+}
+
+.topbar-workspace-chip:hover {
+  background: #e5e8f2;
+  color: #1d1d1f;
+}
+
+/* Center: Universal Command Search Capsule */
+.topbar-center-zone {
+  flex: 1;
+  max-width: 440px;
+}
+
+.topbar-search-capsule {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 6px 12px 6px 34px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 999px;
+  background: #fbfbfc;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.topbar-search-capsule.is-focused {
+  background: #ffffff;
+  border-color: #1d1d1f;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.06);
+}
+
+.topbar-search-capsule .search-icon {
+  position: absolute;
+  left: 12px;
+  color: #8e8e93;
+  pointer-events: none;
+}
+
+.topbar-search-capsule .search-input {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: #1d1d1f;
+  font-size: 12px;
+  outline: none;
+}
+
+.shortcut-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: #eef0f4;
+  color: #8e8e93;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+/* Right: Desktop Controls */
+.topbar-right-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.service-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.service-status-pill.ready {
+  background: #ecfdf5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+}
+
+.service-status-pill.offline {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+.service-status-pill .pulse {
+  margin-right: 0;
+}
+
+.bot-daemon-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.topbar-action-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  background: #ffffff;
+  color: #48484a;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.topbar-action-icon-btn:hover {
+  background: #f4f4f6;
+  transform: translateY(-1px);
+}
+
+.topbar-settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #1d1d1f;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.topbar-settings-btn:hover,
+.topbar-settings-btn.active {
+  background: #1d1d1f;
+  color: #ffffff;
+  border-color: #1d1d1f;
+}
+
+/* ==========================================================================
+   Workbench Homepage Redesign: Executive Command Center
+   ========================================================================== */
+
+.workbench-home-container {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* Executive Hero Banner */
+.executive-hero-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 32px 38px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 24px;
+  background: linear-gradient(135deg, #ffffff 0%, #f6f7fb 100%);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.04);
+  position: relative;
+  overflow: hidden;
+}
+
+.executive-hero-left {
+  display: flex;
+  flex-direction: column;
+  max-width: 620px;
+}
+
+.executive-date-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: #eef2ff;
+  border: 1px solid #dbe2fe;
+  font-size: 11px;
+  font-weight: 600;
+  color: #4338ca;
+  width: fit-content;
+  margin-bottom: 12px;
+}
+
+.executive-date-pill .dot-sep {
+  opacity: 0.5;
+}
+
+.executive-date-pill .goal-tag {
+  color: #b45309;
+}
+
+.executive-greeting-title {
+  margin: 0 0 10px;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: #1d1d1f;
+}
+
+.executive-subtitle {
+  margin: 0 0 20px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #6e6e73;
+}
+
+.executive-fast-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.executive-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.executive-action-btn.primary {
+  background: #1d1d1f;
+  color: #ffffff;
+  border: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15);
+}
+
+.executive-action-btn.primary:hover {
+  background: #3a3a3c;
+  transform: translateY(-1px);
+}
+
+.executive-action-btn.secondary {
+  background: #ffffff;
+  color: #1d1d1f;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+}
+
+.executive-action-btn.secondary:hover {
+  background: #f4f4f6;
+  transform: translateY(-1px);
+}
+
+.executive-notice-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  margin-top: 14px;
+  border-radius: 10px;
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #065f46;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Executive Radar Graphic */
+.executive-hero-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.executive-radar-box {
+  position: relative;
+  width: 220px;
+  height: 200px;
+  display: grid;
+  place-items: center;
+}
+
+.radar-circle {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.radar-circle.circle-1 {
+  width: 170px;
+  height: 170px;
+  border-style: dashed;
+}
+
+.radar-circle.circle-2 {
+  width: 120px;
+  height: 120px;
+}
+
+.radar-core {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 54px;
+  border-radius: 17px;
+  background: #1d1d1f;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  z-index: 2;
+}
+
+.radar-badge {
+  position: absolute;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  font-size: 10px;
+  font-weight: 600;
+  color: #48484a;
+  z-index: 3;
+}
+
+.badge-obsidian { top: 6px; right: 0; }
+.badge-sqlite { bottom: 12px; left: 0; }
+.badge-feishu { bottom: 2px; right: 10px; }
+
+/* Bento 4-Grid Modular Live Cards */
+.workbench-bento-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.wb-bento-card {
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03);
+  cursor: pointer;
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.wb-bento-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(0, 0, 0, 0.16);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.07);
+}
+
+.wb-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.wb-icon-box {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+}
+
+.wb-icon-box.indigo { background: #eef2ff; color: #4f46e5; }
+.wb-icon-box.emerald { background: #ecfdf5; color: #059669; }
+.wb-icon-box.amber { background: #fffbeb; color: #d97706; }
+.wb-icon-box.purple { background: #f5f3ff; color: #7c3aed; }
+
+.wb-badge {
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #f0f0f2;
+  color: #6e6e73;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.wb-badge.active {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.wb-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1d1d1f;
+  margin-bottom: 4px;
+}
+
+.wb-desc {
+  font-size: 11px;
+  line-height: 1.55;
+  color: #6e6e73;
+  margin: 0 0 16px;
+  min-height: 34px;
+}
+
+.wb-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.wb-foot-meta {
+  font-size: 11px;
+  color: #8e8e93;
+}
+
+.wb-arrow {
+  color: #8e8e93;
+  transition: transform 0.18s ease;
+}
+
+.wb-bento-card:hover .wb-arrow {
+  color: #1d1d1f;
+  transform: translateX(3px);
+}
+
+/* Pipeline Schedule & Fast Launchpad */
+.workbench-pipeline-section {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr;
+  gap: 18px;
+}
+
+.pipeline-card,
+.quick-launchpad-card {
+  padding: 22px 24px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.03);
+}
+
+.pipeline-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.pipeline-header h3 {
+  margin: 2px 0 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #1d1d1f;
+}
+
+.pipeline-timeline {
+  display: flex;
+  flex-direction: column;
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 48px 24px 1fr;
+  align-items: flex-start;
+  min-height: 48px;
+}
+
+.timeline-time {
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 700;
+  color: #6e6e73;
+  padding-top: 2px;
+}
+
+.timeline-dot-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+}
+
+.timeline-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1d1d1f;
+  margin-top: 5px;
+}
+
+.timeline-line {
+  flex: 1;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.1);
+  margin: 4px 0;
+}
+
+.timeline-content {
+  padding-bottom: 14px;
+}
+
+.pipeline-tag {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #f0f2f8;
+  color: #6e6e73;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+/* Fast Launchpad Grid */
+.launchpad-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.launchpad-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #fbfbfc;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.launchpad-btn:hover {
+  background: #ffffff;
+  border-color: #1d1d1f;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+}
+
+.launchpad-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+
+.launchpad-icon.blue { background: #eff6ff; color: #2563eb; }
+.launchpad-icon.emerald { background: #ecfdf5; color: #059669; }
+.launchpad-icon.amber { background: #fffbeb; color: #d97706; }
+.launchpad-icon.purple { background: #f5f3ff; color: #7c3aed; }
+
+.launchpad-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.launchpad-text strong {
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d1d1f;
+}
+
+.launchpad-text small {
+  font-size: 10px;
+  color: #8e8e93;
+  margin-top: 2px;
+}
+
+@media (max-width: 1024px) {
+  .workbench-bento-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .workbench-pipeline-section {
+    grid-template-columns: 1fr;
+  }
+  .executive-hero-banner {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
