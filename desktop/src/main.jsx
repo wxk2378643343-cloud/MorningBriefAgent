@@ -16,6 +16,7 @@ import {
   TrendingUp,
   ShieldCheck,
   Zap,
+  Sparkles,
 } from "lucide-react";
 import "./styles.css";
 import "./components/onboarding/onboarding.css";
@@ -41,6 +42,62 @@ const demoDiscovery = {
 const DesktopFileWorkspace = React.lazy(
   () => import("./components/file-workspace/FileWorkspace"),
 );
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an unhandled error:", error, errorInfo);
+  }
+
+  resetError = () => {
+    this.setState({ hasError: false, error: null });
+    if (this.props.onReset) {
+      this.props.onReset();
+    }
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <section className="placeholder-page mx-auto max-w-xl my-12 p-8 text-center bg-white/90 backdrop-blur-md rounded-2xl border border-red-200 shadow-xl">
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-100 text-red-600">
+            <Zap size={22} />
+          </div>
+          <span className="eyebrow !text-red-500 font-semibold tracking-wider text-[11px]">PAGE RENDER ERROR</span>
+          <h2 className="mt-2 text-xl font-bold text-slate-800">页面渲染遇到异常</h2>
+          <p className="mt-2 text-sm text-slate-500">
+            {this.state.error?.message || "组件在渲染时遇到未捕获错误，本地数据未受损。"}
+          </p>
+          <div className="mt-6 flex justify-center gap-3">
+            <button
+              className="primary !rounded-full !bg-black !px-6 !py-2.5 !text-white hover:!bg-slate-800"
+              type="button"
+              onClick={this.resetError}
+            >
+              返回工作台首页
+            </button>
+            <button
+              className="secondary !rounded-full !border-slate-300 !px-5 !py-2.5 text-slate-600 hover:!bg-slate-100"
+              type="button"
+              onClick={() => window.location.reload()}
+            >
+              刷新应用
+            </button>
+          </div>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function App() {
   const [activeSection, setActiveSection] = useState("工作台");
@@ -189,33 +246,35 @@ function App() {
           workspace={workspace}
           onQuickRun={() => setActiveSection("工作流")}
         />
-        {activeSection === "文件与数据" ? (
-          <React.Suspense fallback={<section className="placeholder-page"><p>正在打开本地文件工作台…</p></section>}>
-            <DesktopFileWorkspace serviceState={serviceState} />
-          </React.Suspense>
-        ) : activeSection === "工作流" ? (
-          <WorkflowPage />
-        ) : activeSection === "数据库" ? (
-          <DatabasePage />
-        ) : activeSection === "设置" ? (
-          <SettingsPage
-            status={status}
-            onOpenSetup={(stepKey) => {
-              setSetupStep(stepKey);
-              setSetupMode(true);
-            }}
-            onReconfigure={async () => {
-              await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" });
-              setSetupStep(null);
-              setSetupMode(true);
-              setActiveSection("工作台");
-            }}
-          />
-        ) : activeSection !== "工作台" ? (
-          <SectionPlaceholder section={activeSection} />
-        ) : (
-          <WorkbenchHome onNavigate={setActiveSection} workspace={workspace} status={status} />
-        )}
+        <ErrorBoundary onReset={() => setActiveSection("工作台")}>
+          {activeSection === "文件与数据" ? (
+            <React.Suspense fallback={<section className="placeholder-page"><p>正在打开本地文件工作台…</p></section>}>
+              <DesktopFileWorkspace serviceState={serviceState} />
+            </React.Suspense>
+          ) : activeSection === "工作流" ? (
+            <WorkflowPage />
+          ) : activeSection === "数据库" ? (
+            <DatabasePage />
+          ) : activeSection === "设置" ? (
+            <SettingsPage
+              status={status}
+              onOpenSetup={(stepKey) => {
+                setSetupStep(stepKey);
+                setSetupMode(true);
+              }}
+              onReconfigure={async () => {
+                await fetch(apiUrl("/api/v1/onboarding/reset"), { method: "POST" });
+                setSetupStep(null);
+                setSetupMode(true);
+                setActiveSection("工作台");
+              }}
+            />
+          ) : activeSection !== "工作台" ? (
+            <SectionPlaceholder section={activeSection} />
+          ) : (
+            <WorkbenchHome onNavigate={setActiveSection} workspace={workspace} status={status} />
+          )}
+        </ErrorBoundary>
       </main>
     </ApplicationShell>
   );
