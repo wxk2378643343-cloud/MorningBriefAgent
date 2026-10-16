@@ -85,7 +85,7 @@ export default function AppTopbar({
         {/* Local Core Service Latency Pill */}
         <div className={`service-status-pill ${isReady ? "ready" : "offline"}`} title={serviceLabel}>
           <span className="pulse" />
-          <span className="pill-text">{isReady ? "核心 8000 活跃" : "服务断开"}</span>
+          <span className="pill-text">{isReady ? "核心 8765 活跃" : "服务断开"}</span>
         </div>
 
         {/* Feishu Bot Daemon Pill */}
