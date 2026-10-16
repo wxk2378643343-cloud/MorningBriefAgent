@@ -179,7 +179,7 @@ export default function FileWorkspace({ serviceState }) {
       <header className="workspace-toolbar">
         <div className="workspace-location">
           <FolderOpen size={16} />
-          <span>{source?.name ?? "本地工作区"}</span>
+          <span>知识库</span>
           <small>{source?.root_path ?? "正在载入…"}</small>
         </div>
         <div className="workspace-toolbar-actions">
