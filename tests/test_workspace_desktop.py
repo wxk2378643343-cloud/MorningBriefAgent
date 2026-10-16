@@ -4,6 +4,7 @@ import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from core.application.local_api import create_local_server
@@ -109,6 +110,38 @@ class DesktopWorkspaceTests(unittest.TestCase):
                             },
                         )
                     set_secret.assert_not_called()
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_channel_credential_store_failure_returns_safe_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}"
+                with patch(
+                    "core.application.local_api.set_secret",
+                    side_effect=RuntimeError("system_credential_store_unavailable"),
+                ):
+                    with self.assertRaises(HTTPError) as raised:
+                        self._post(
+                            base + "/api/v1/channels/feishu/credentials",
+                            {
+                                "app_id": "app-id",
+                                "app_secret": "secret-value",
+                                "user_open_id": "user-id",
+                                "chat_id": "chat-id",
+                            },
+                        )
+                payload = json.loads(raised.exception.read().decode("utf-8"))
+                self.assertEqual(payload["error"], "credential_save_failed")
+                self.assertEqual(payload["message"], "system_credential_store_unavailable")
+                self.assertNotIn("secret-value", json.dumps(payload))
             finally:
                 server.shutdown()
                 server.server_close()
