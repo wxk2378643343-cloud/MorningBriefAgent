@@ -51,7 +51,7 @@ export function WelcomeScreen({ onEnter }) {
           <div><span className="welcome-feature-icon">✦</span><strong>理解你的工作</strong><p>通过待办、日程、新闻和知识库工作流，减少重复整理。</p></div>
           <div><span className="welcome-feature-icon">↗</span><strong>辅助你的行动</strong><p>让 Agent 输出清晰的结论、提醒和下一步建议。</p></div>
         </div>
-        <button className="primary welcome-enter" type="button" onClick={onEnter}>进入我的工作台 <ChevronRight size={16} /></button>
+        <button className="primary welcome-enter" type="button" onClick={onEnter}>开始配置我的工作台 <ChevronRight size={16} /></button>
         <small className="welcome-footnote">本地文件由你掌控，之后可以在设置中随时修改。</small>
       </main>
     </div>

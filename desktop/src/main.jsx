@@ -72,7 +72,10 @@ function App() {
     ])
       .then(([nextStatus, nextWorkspace, nextDiscovery]) => {
         setStatus(nextStatus);
-        if (!nextStatus.complete) setFirstRun(true);
+        if (!nextStatus.complete) {
+          setFirstRun(true);
+          if (!nextWorkspace?.configured) setShowWelcome(true);
+        }
         setWorkspace(nextWorkspace);
         setDiscovery(nextDiscovery);
         const localProvider = nextDiscovery.providers?.find((provider) => provider.kind === "local_process" && provider.available);
@@ -106,7 +109,6 @@ function App() {
       if (nextStatus.complete && (setupMode || firstRun)) {
         setSetupMode(false);
         setActiveSection("工作台");
-        setShowWelcome(true);
         setFirstRun(false);
       }
       if (stepKey === "workspace") {
