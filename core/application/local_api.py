@@ -26,7 +26,14 @@ from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, rese
 from storage.workspace import default_workspace_root, initialize_workspace, save_personal_context, workspace_info
 from storage.agent_status import read_agent_status
 from storage.database_browser import create as create_record, delete as delete_record, rows as database_rows, tables as database_tables, update as update_record
-from storage.workflows import list_runs, list_workflows, run_workflow
+from storage.workflows import (
+    get_workflow_log,
+    list_runs,
+    list_workflows,
+    run_workflow,
+    sync_windows_tasks,
+    update_workflow_schedule,
+)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -55,7 +62,13 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path == "/api/v1/agent/status":
             self._send_json(read_agent_status(self.server.database_path))
         elif self.path == "/api/v1/workflows":
-            self._send_json({"workflows": list_workflows(), "runs": list_runs(self.server.database_path)})
+            self._send_json({
+                "workflows": list_workflows(self.server.database_path),
+                "runs": list_runs(self.server.database_path),
+            })
+        elif self.path.startswith("/api/v1/workflows/runs/") and self.path.endswith("/log"):
+            run_id = self.path.split("/")[5]
+            self._send_json(get_workflow_log(run_id, self.server.database_path))
         elif self.path == "/api/v1/database/tables":
             self._send_json({"tables": database_tables(self.server.database_path)})
         elif self.path.startswith("/api/v1/database/table"):
@@ -245,6 +258,24 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(run_workflow(key, self.server.database_path), HTTPStatus.ACCEPTED)
             except ValueError as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path.startswith("/api/v1/workflows/") and self.path.endswith("/schedule"):
+            key = self.path.split("/")[4]
+            try:
+                payload = self._read_json()
+                self._send_json(
+                    update_workflow_schedule(
+                        key=key,
+                        schedule_time=payload.get("time"),
+                        enabled=payload.get("enabled"),
+                        database_path=self.server.database_path,
+                    )
+                )
+            except ValueError as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/v1/workflows/sync-tasks":
+            self._send_json(sync_windows_tasks(self.server.database_path))
             return
         if self.path == "/api/v1/database/records":
             try:
