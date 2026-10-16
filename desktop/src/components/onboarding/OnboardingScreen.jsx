@@ -102,7 +102,7 @@ export function SetupScreen({
             {currentStep === "profile" && <ProfileStep onComplete={() => completeStep("profile", "profile ready")} />}
           </div>
           <div className="setup-footer">
-            <button className="secondary" type="button" onClick={onBack} disabled={currentIndex === 0}><span>←</span>上一步</button>
+            <button className="secondary" type="button" onClick={onBack}><span>←</span>{currentIndex === 0 ? "返回欢迎页" : "上一步"}</button>
             {onSkip && <button className="text-button" type="button" onClick={onSkip}>稍后配置</button>}
             <button className="text-button setup-cancel" type="button" onClick={onCancel}>取消</button>
           </div>
