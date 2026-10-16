@@ -22,13 +22,6 @@
 .startup-card p { color: #6e6e73; line-height: 1.7; font-size: 13px; }
 .startup-action { margin-top: 22px; }
 
-.setup-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 25px max(32px, calc((100% - 1080px) / 2));
-}
-.setup-topbar .brand { padding: 0; }
 .setup-main { width: calc(100% - 80px); max-width: 1380px; margin: 5vh auto 58px; }
 .setup-intro { margin-bottom: 24px; }
 .setup-intro h1 { margin: 10px 0; color: #1d1d1f; font-size: 34px; font-weight: 650; letter-spacing: -.05em; }
@@ -129,7 +122,6 @@
 
 @media (max-width: 760px) {
   .setup-main { width: calc(100% - 32px); margin-top: 2vh; }
-  .setup-topbar { padding-inline: 18px; }
   .welcome-main { width: calc(100% - 32px); min-height: calc(100vh - 72px); margin-top: 5vh; padding: 6vh 16px 42px; }
   .welcome-main h1 { font-size: clamp(40px, 12vw, 58px); }
   .welcome-features { margin-top: 30px; }
