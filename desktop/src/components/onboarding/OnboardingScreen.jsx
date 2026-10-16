@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   Bot,
   Check,
@@ -154,19 +154,26 @@ function ProviderStep({ providers, selected, onSelect, onComplete }) {
 
 function ChannelStep({ channels, selected, onSelect, onComplete }) {
   const [values, setValues] = useState({ app_id: "", app_secret: "", user_open_id: "", chat_id: "" });
+  const formRef = useRef(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async () => {
     setBusy(true);
     setError("");
     try {
-      if (Object.values(values).some((value) => !value.trim())) throw new Error("required");
-      const response = await fetch(apiUrl("/api/v1/channels/feishu/credentials"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      // Password managers and native WebView autofill can update the DOM
+      // without firing React's onChange. Read the form at submit time so a
+      // visibly filled credential is never treated as empty.
+      const submittedValues = Object.fromEntries(new FormData(formRef.current).entries());
+      if (Object.values(submittedValues).some((value) => !String(value).trim())) throw new Error("required");
+      const response = await fetch(apiUrl("/api/v1/channels/feishu/credentials"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submittedValues) });
       if (!response.ok) throw new Error("channel");
+      setValues(submittedValues);
       onComplete();
     } catch { setBusy(false); setError("请完整填写飞书 App ID、App Secret、User Open ID 和 Chat ID 后继续。"); }
   };
-  return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => { onSelect("feishu"); setError(""); }}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><div className="channel-fields">{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <input key={key} type={key === "app_secret" ? "password" : "text"} placeholder={key} value={values[key]} onChange={(event) => { setValues({ ...values, [key]: event.target.value }); setError(""); }} />)}</div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
+  const labels = { app_id: "App ID", app_secret: "App Secret", user_open_id: "User Open ID", chat_id: "Chat ID" };
+  return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => { onSelect("feishu"); setError(""); }}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><form ref={formRef} className="channel-fields" onSubmit={(event) => { event.preventDefault(); submit(); }}>{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <label key={key}>{labels[key]}<input name={key} type={key === "app_secret" ? "password" : "text"} autoComplete={key === "app_secret" ? "current-password" : "off"} placeholder={labels[key]} value={values[key]} onChange={(event) => { setValues({ ...values, [key]: event.target.value }); setError(""); }} /></label>)}</form><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
 }
 
 function ProfileStep({ onComplete }) {

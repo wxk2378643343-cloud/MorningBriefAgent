@@ -67,6 +67,7 @@
 }
 .secret-field { display: grid; gap: 7px; color: #6e6e73; font-size: 12px; margin: 14px 0; }
 .channel-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.channel-fields label { display: grid; gap: 6px; color: #6e6e73; font-size: 11px; }
 
 .workspace-preview { margin: 20px 0 18px; padding: 15px 16px; border: 1px solid rgba(0, 0, 0, .08); border-radius: 16px; background: #fafafa; }
 .workspace-preview-title { display: block; margin-bottom: 11px; color: #8e8e93; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
