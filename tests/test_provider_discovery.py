@@ -19,7 +19,8 @@ class ProviderDiscoveryTests(unittest.TestCase):
 
     def test_feishu_requires_both_credentials(self):
         with patch("core.agent.discovery.config.FEISHU_APP_ID", "app-id"), \
-             patch("core.agent.discovery.config.FEISHU_APP_SECRET", ""):
+             patch("core.agent.discovery.config.FEISHU_APP_SECRET", ""), \
+             patch("core.agent.discovery.get_secret", return_value=None):
             feishu = discover_channels()[0]
         self.assertFalse(feishu.available)
         self.assertFalse(feishu.configured)

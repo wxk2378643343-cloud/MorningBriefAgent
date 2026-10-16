@@ -14,7 +14,12 @@ def set_secret(name: str, value: str) -> None:
         import keyring
     except ImportError as exc:
         raise RuntimeError("keyring_dependency_missing") from exc
-    keyring.set_password(SERVICE_NAME, name, value)
+    try:
+        keyring.set_password(SERVICE_NAME, name, value)
+    except Exception as exc:
+        # The desktop UI can show a precise, actionable error without
+        # surfacing backend-specific stack traces or credential values.
+        raise RuntimeError("system_credential_store_unavailable") from exc
 
 
 def get_secret(name: str) -> str | None:

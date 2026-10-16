@@ -10,7 +10,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { apiUrl } from "../../localApi";
+import { apiUrl, fetchJson } from "../../localApi";
 
 export const ONBOARDING_STEPS = [
   { key: "workspace", label: "本地工作区", icon: FolderOpen },
@@ -166,11 +166,25 @@ function ChannelStep({ channels, selected, onSelect, onComplete }) {
       // visibly filled credential is never treated as empty.
       const submittedValues = Object.fromEntries(new FormData(formRef.current).entries());
       if (Object.values(submittedValues).some((value) => !String(value).trim())) throw new Error("required");
-      const response = await fetch(apiUrl("/api/v1/channels/feishu/credentials"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(submittedValues) });
-      if (!response.ok) throw new Error("channel");
+      await fetchJson("/api/v1/channels/feishu/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(submittedValues),
+      });
       setValues(submittedValues);
       onComplete();
-    } catch { setBusy(false); setError("请完整填写飞书 App ID、App Secret、User Open ID 和 Chat ID 后继续。"); }
+    } catch (caught) {
+      setBusy(false);
+      const messages = {
+        app_id_required: "请填写飞书 App ID 后继续。",
+        app_secret_required: "请填写飞书 App Secret 后继续。",
+        user_open_id_required: "请填写飞书 User Open ID 后继续。",
+        chat_id_required: "请填写飞书 Chat ID 后继续。",
+        keyring_dependency_missing: "系统凭据存储组件未安装。请安装项目依赖后重试。",
+        system_credential_store_unavailable: "系统凭据存储暂不可用，请检查 Windows Credential Manager 后重试。",
+      };
+      setError(messages[caught.message] || "保存飞书配置失败，请检查本地服务后重试。");
+    }
   };
   const labels = { app_id: "App ID", app_secret: "App Secret", user_open_id: "User Open ID", chat_id: "Chat ID" };
   return <div className="step-panel"><div className="panel-icon orange"><MessageSquare size={21} /></div><div className="panel-copy"><h4>连接消息渠道</h4><p>配置飞书后，待办、日程、新闻和简报仍由 Python 工作流统一处理。</p><button className={`channel-option ${selected === "feishu" ? "selected" : ""}`} onClick={() => { onSelect("feishu"); setError(""); }}><span className="feishu-mark">飞</span><span><strong>飞书 Feishu</strong><small>{channels.find((item) => item.name === "feishu")?.detail ?? "本地配置"}</small></span><Settings2 size={16} /></button><form ref={formRef} className="channel-fields" onSubmit={(event) => { event.preventDefault(); submit(); }}>{["app_id", "app_secret", "user_open_id", "chat_id"].map((key) => <label key={key}>{labels[key]}<input name={key} type={key === "app_secret" ? "password" : "text"} autoComplete={key === "app_secret" ? "current-password" : "off"} placeholder={labels[key]} value={values[key]} onChange={(event) => { setValues({ ...values, [key]: event.target.value }); setError(""); }} /></label>)}</form><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "保存渠道设置"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
