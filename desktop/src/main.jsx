@@ -74,7 +74,7 @@ function App() {
         setStatus(nextStatus);
         if (!nextStatus.complete) {
           setFirstRun(true);
-          if (!nextWorkspace?.configured) setShowWelcome(true);
+          setShowWelcome(true);
         }
         setWorkspace(nextWorkspace);
         setDiscovery(nextDiscovery);
