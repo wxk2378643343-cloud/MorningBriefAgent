@@ -109,7 +109,6 @@
 
 .welcome-screen { min-height: 100vh; color: #1d1d1f; background: radial-gradient(circle at 50% -8%, #fff 0, #f5f5f7 48%, #ededf0 100%); }
 .welcome-main { display: flex; flex-direction: column; align-items: center; width: calc(100% - 80px); max-width: 1380px; min-height: calc(100vh - 92px); margin: 0 auto; padding: 8vh clamp(32px, 8vw, 150px) 70px; text-align: center; }
-.welcome-local { color: #16845b; font-size: 12px; }
 .welcome-badge { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid rgba(0, 0, 0, .08); border-radius: 999px; color: #6e6e73; background: rgba(255, 255, 255, .72); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
 .welcome-main h1 { margin: 24px 0 16px; color: #1d1d1f; font-size: clamp(42px, 6vw, 70px); font-weight: 650; line-height: 1.02; letter-spacing: -.075em; }
 .welcome-main h1 em { color: #6e6e73; font-style: normal; }
