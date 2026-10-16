@@ -13,6 +13,7 @@ import {
   Workflow,
 } from "lucide-react";
 import "./styles.css";
+import "./components/onboarding/onboarding.css";
 import { apiUrl, probeLocalApi } from "./localApi";
 import WorkflowPage from "./pages/WorkflowPage";
 import DatabasePage from "./pages/DatabasePage";
