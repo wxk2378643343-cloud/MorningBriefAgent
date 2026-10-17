@@ -9,7 +9,7 @@ from typing import Any
 from core.runtime import config
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 
 class ManagedConnection(sqlite3.Connection):

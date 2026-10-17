@@ -99,7 +99,7 @@ def _file_type(path: Path) -> str:
     }.get(suffix, "file")
 
 
-def _hash_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
+def hash_file(path: Path, *, chunk_size: int = 1024 * 1024) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
         while chunk := handle.read(chunk_size):
@@ -153,7 +153,7 @@ def scan_source(
                     _file_type(path),
                     stat.st_size,
                     str(stat.st_mtime),
-                    _hash_file(path),
+                    hash_file(path),
                 ),
             )
             indexed += 1
@@ -277,14 +277,49 @@ def _file_sync_status(row: dict[str, object], source_root: Path) -> str:
     return "synced"
 
 
-def read_file_preview(
+def search_files(
     source_id: str,
-    relative_path: str,
+    query: str,
     *,
-    max_bytes: int = 128 * 1024,
+    limit: int = 100,
     database_path: str | os.PathLike[str] | None = None,
-) -> dict[str, object]:
-    """Read a bounded text preview from a registered source."""
+) -> list[dict[str, object]]:
+    """Search indexed file names, paths, and bounded UTF-8 text content."""
+    normalized_query = query.strip().casefold()
+    if not normalized_query:
+        return list_files(source_id, database_path=database_path)
+    root = source_root(source_id, database_path=database_path)
+    matches: list[dict[str, object]] = []
+    for record in list_files(source_id, database_path=database_path):
+        relative_path = str(record["relative_path"])
+        searchable_name = f"{record['file_name']}\n{relative_path}".casefold()
+        match_type: str | None = None
+        if normalized_query in searchable_name:
+            match_type = "metadata"
+        elif record["file_type"] in {"markdown", "json", "log", "file"}:
+            target = resolve_source_path(root, relative_path)
+            try:
+                if target.stat().st_size <= 128 * 1024:
+                    content = target.read_text(encoding="utf-8")
+                    if normalized_query in content.casefold():
+                        match_type = "content"
+            except (FileNotFoundError, OSError, UnicodeDecodeError):
+                continue
+        if match_type:
+            result = dict(record)
+            result["match_type"] = match_type
+            matches.append(result)
+            if len(matches) >= max(1, min(int(limit), 100)):
+                break
+    return matches
+
+
+def source_root(
+    source_id: str,
+    *,
+    database_path: str | os.PathLike[str] | None = None,
+) -> Path:
+    """Return the resolved root of an enabled source."""
     initialize(database_path)
     with connect(database_path) as connection:
         source = connection.execute(
@@ -294,9 +329,29 @@ def read_file_preview(
     if source is None:
         raise KeyError(f"Unknown data source: {source_id}")
     root = Path(str(source["root_path"])).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(str(root))
+    return root
+
+
+def resolve_source_path(root: Path, relative_path: str) -> Path:
+    """Resolve a non-root path while preventing traversal outside a source."""
     target = (root / relative_path).resolve()
-    if root != target and root not in target.parents:
+    if root == target or root not in target.parents:
         raise ValueError("Path escapes data source root")
+    return target
+
+
+def read_file_preview(
+    source_id: str,
+    relative_path: str,
+    *,
+    max_bytes: int = 128 * 1024,
+    database_path: str | os.PathLike[str] | None = None,
+) -> dict[str, object]:
+    """Read a bounded text preview from a registered source."""
+    root = source_root(source_id, database_path=database_path)
+    target = resolve_source_path(root, relative_path)
     if not target.is_file():
         raise FileNotFoundError(relative_path)
     if target.stat().st_size > max_bytes:
@@ -322,18 +377,8 @@ def write_file_text(
     database_path: str | os.PathLike[str] | None = None,
 ) -> dict[str, object]:
     """Write a Markdown/text file inside a registered source and return its metadata."""
-    initialize(database_path)
-    with connect(database_path) as connection:
-        source = connection.execute(
-            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
-            (source_id,),
-        ).fetchone()
-    if source is None:
-        raise KeyError(f"Unknown data source: {source_id}")
-    root = Path(str(source["root_path"])).resolve()
-    target = (root / relative_path).resolve()
-    if root == target or root not in target.parents:
-        raise ValueError("Path escapes data source root")
+    root = source_root(source_id, database_path=database_path)
+    target = resolve_source_path(root, relative_path)
     if target.suffix.lower() not in {".md", ".markdown", ".txt"}:
         raise ValueError("only_text_files_can_be_written")
     if len(content.encode("utf-8")) > 512 * 1024:
@@ -351,18 +396,8 @@ def delete_file(
     database_path: str | os.PathLike[str] | None = None,
 ) -> None:
     """Delete a text file inside a registered source."""
-    initialize(database_path)
-    with connect(database_path) as connection:
-        source = connection.execute(
-            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
-            (source_id,),
-        ).fetchone()
-    if source is None:
-        raise KeyError(f"Unknown data source: {source_id}")
-    root = Path(str(source["root_path"])).resolve()
-    target = (root / relative_path).resolve()
-    if root == target or root not in target.parents:
-        raise ValueError("Path escapes data source root")
+    root = source_root(source_id, database_path=database_path)
+    target = resolve_source_path(root, relative_path)
     if not target.is_file():
         raise FileNotFoundError(relative_path)
     if target.suffix.lower() not in {".md", ".markdown", ".txt"}:
@@ -425,18 +460,8 @@ def read_file_binary(
     database_path: str | os.PathLike[str] | None = None,
 ) -> dict[str, object]:
     """Read a bounded binary file as base64 for local image/PDF preview."""
-    initialize(database_path)
-    with connect(database_path) as connection:
-        source = connection.execute(
-            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
-            (source_id,),
-        ).fetchone()
-    if source is None:
-        raise KeyError(f"Unknown data source: {source_id}")
-    root = Path(str(source["root_path"])).resolve()
-    target = (root / relative_path).resolve()
-    if root != target and root not in target.parents:
-        raise ValueError("Path escapes data source root")
+    root = source_root(source_id, database_path=database_path)
+    target = resolve_source_path(root, relative_path)
     if not target.is_file():
         raise FileNotFoundError(relative_path)
     if target.stat().st_size > max_bytes:
@@ -463,18 +488,8 @@ def inspect_sqlite(
     database_path: str | os.PathLike[str] | None = None,
 ) -> dict[str, object]:
     """Read SQLite schema or a bounded page of rows without mutating it."""
-    initialize(database_path)
-    with connect(database_path) as connection:
-        source = connection.execute(
-            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
-            (source_id,),
-        ).fetchone()
-    if source is None:
-        raise KeyError(f"Unknown data source: {source_id}")
-    root = Path(str(source["root_path"])).resolve()
-    target = (root / relative_path).resolve()
-    if root != target and root not in target.parents:
-        raise ValueError("Path escapes data source root")
+    root = source_root(source_id, database_path=database_path)
+    target = resolve_source_path(root, relative_path)
     if not target.is_file():
         raise FileNotFoundError(relative_path)
     if target.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:

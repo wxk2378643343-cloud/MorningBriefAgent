@@ -177,6 +177,23 @@ CREATE TABLE IF NOT EXISTS file_records (
     UNIQUE (data_source_id, relative_path)
 );
 
+CREATE TABLE IF NOT EXISTS file_recovery_operations (
+    id TEXT PRIMARY KEY,
+    request_id TEXT NOT NULL,
+    data_source_id TEXT NOT NULL,
+    relative_path TEXT NOT NULL,
+    recovery_path TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    error_message TEXT,
+    deleted_at TEXT,
+    restored_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (data_source_id) REFERENCES data_sources(id),
+    UNIQUE (data_source_id, request_id)
+);
+
 CREATE TABLE IF NOT EXISTS installation_state (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     setup_version INTEGER NOT NULL DEFAULT 1,
@@ -234,3 +251,5 @@ CREATE INDEX IF NOT EXISTS idx_file_records_source_path
     ON file_records(data_source_id, relative_path);
 CREATE INDEX IF NOT EXISTS idx_file_records_type_modified
     ON file_records(file_type, modified_at);
+CREATE INDEX IF NOT EXISTS idx_file_recovery_source_status
+    ON file_recovery_operations(data_source_id, status, created_at);
