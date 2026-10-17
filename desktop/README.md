@@ -29,6 +29,12 @@ API 只监听 `127.0.0.1`，默认使用本地 SQLite 配置。桌面端可以�
 `GET /api/v1/health` 判断服务是否可用。后续接入 Tauri 时，由桌面壳启动和回收
 这个 Python 子进程，不把业务逻辑复制到 TypeScript 中。
 
+文件工作台通过
+`GET /api/v1/files?source_id=<id>&sort=recent` 读取稳定的文件元数据契约。
+更新时间来自文件系统并以 UTC ISO 8601 返回；来源来自 `data_sources`；
+同步状态由存储层比较 SQLite 索引快照与当前文件元数据后确定。桌面端只负责将
+`synced`、`stale`、`missing` 和 `unknown` 展示为用户可读状态。
+
 密钥通过 Python 的系统凭据存储边界保存，不写入 SQLite；非敏感的工作区状态和
 向导进度保存在本地 SQLite。桌面端不会把原始文件上传到云端。
 

@@ -271,6 +271,8 @@ class MockIntegrationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
             agy_bridge.config, "PROJECT_ROOT", Path(tmp)
         ), mock.patch.object(
+            agy_bridge, "FIXED_CONVERSATION_ID", "offline-test-conversation"
+        ), mock.patch.object(
             agy_bridge, "_ask_native_agy_locked", side_effect=fake_call
         ):
             results = []

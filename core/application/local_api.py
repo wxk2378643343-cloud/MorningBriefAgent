@@ -120,11 +120,23 @@ class _Handler(BaseHTTPRequestHandler):
                         {"error": str(exc)}, HTTPStatus.BAD_REQUEST
                     )
             else:
-                self._send_json({
-                    "files": list_files(
-                        source_id, database_path=self.server.database_path
+                try:
+                    sort = self._query_value("sort") or "path"
+                    limit_value = self._query_value("limit")
+                    limit = int(limit_value) if limit_value is not None else None
+                    self._send_json({
+                        "files": list_files(
+                            source_id,
+                            sort=sort,
+                            limit=limit,
+                            database_path=self.server.database_path,
+                        ),
+                        "sort": sort,
+                    })
+                except (TypeError, ValueError) as exc:
+                    self._send_json(
+                        {"error": str(exc)}, HTTPStatus.BAD_REQUEST
                     )
-                })
         elif self.path.startswith("/api/v1/sqlite"):
             source_id = self._query_value("source_id")
             relative_path = self._query_value("path")
