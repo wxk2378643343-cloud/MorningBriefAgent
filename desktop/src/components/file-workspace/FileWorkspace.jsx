@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   Clock3,
+  FolderSync,
   FilePlus2,
   FolderOpen,
   RefreshCw,
@@ -18,6 +19,7 @@ import {
   formatFileUpdatedAt,
   normalizeWorkspaceFile,
 } from "./fileMetadata";
+import { folderSyncPreviewMessage, folderSyncRequest } from "./folderSync";
 import "./fileWorkspace.css";
 
 const TEXT_TYPES = new Set(["markdown", "json", "log", "file"]);
@@ -210,6 +212,39 @@ export default function FileWorkspace({ serviceState }) {
     }
   };
 
+  const syncToFolder = async () => {
+    if (!source) return;
+    const targetRoot = window.prompt("同步到本地文件夹（请输入完整路径）");
+    if (!targetRoot?.trim()) return;
+    setMessage("正在检查目标文件夹…");
+    try {
+      const previewRequest = folderSyncRequest(source.id, targetRoot, false);
+      const preview = await fetchJson(
+        previewRequest.path,
+        previewRequest.options,
+      );
+      const added = preview.sync?.added?.length ?? 0;
+      if (!added) {
+        setMessage(folderSyncPreviewMessage(preview.sync));
+        return;
+      }
+      const confirmed = window.confirm(
+        `${folderSyncPreviewMessage(preview.sync)}继续吗？`,
+      );
+      if (!confirmed) {
+        setMessage("已取消同步，目标文件夹没有改变。");
+        return;
+      }
+      const applyRequest = folderSyncRequest(source.id, targetRoot, true);
+      const applied = await fetchJson(applyRequest.path, applyRequest.options);
+      setMessage(
+        `已同步 ${applied.sync?.copied?.length ?? 0} 个文件；冲突文件未覆盖。`,
+      );
+    } catch (error) {
+      setMessage(`文件夹同步失败：${error.message}`);
+    }
+  };
+
   const relocateSelectedFile = async (destinationPath, successMessage) => {
     if (!source || !selectedFile || !destinationPath) return;
     const previousPath = selectedFile.relativePath;
@@ -266,6 +301,9 @@ export default function FileWorkspace({ serviceState }) {
         </div>
         <div className="workspace-toolbar-actions">
           <button onClick={createFile} type="button"><FilePlus2 size={15} />新建</button>
+          <button onClick={syncToFolder} type="button">
+            <FolderSync size={15} />同步到文件夹
+          </button>
           <button disabled={!recoveries.length} onClick={restoreLatestFile} type="button">
             <RotateCcw size={15} />恢复最近删除
           </button>

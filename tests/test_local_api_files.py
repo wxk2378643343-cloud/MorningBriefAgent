@@ -553,6 +553,59 @@ class LocalFileApiTests(unittest.TestCase):
                 [item["relative_path"] for item in snapshots[0]["files"]],
             )
 
+    def test_folder_sync_previews_then_copies_without_overwriting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            source = Path(temp_dir) / "source"
+            target = Path(temp_dir) / "target"
+            source.mkdir()
+            target.mkdir()
+            (source / "new.md").write_text("new", encoding="utf-8")
+            (source / "conflict.md").write_text("source", encoding="utf-8")
+            (target / "conflict.md").write_text("target", encoding="utf-8")
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+            source_id = register_source(
+                "Source",
+                source,
+                read_only=False,
+                database_path=database,
+            )
+            scan_source(source_id, database_path=database)
+            server, thread, base = self._start_server(database)
+            try:
+                preview = self._post(
+                    f"{base}/api/v1/folder-sync",
+                    {
+                        "source_id": source_id,
+                        "target_root": str(target),
+                        "apply": False,
+                    },
+                )["sync"]
+                self.assertEqual(["new.md"], preview["added"])
+                self.assertEqual(["conflict.md"], preview["conflicts"])
+                self.assertFalse((target / "new.md").exists())
+
+                applied = self._post(
+                    f"{base}/api/v1/folder-sync",
+                    {
+                        "source_id": source_id,
+                        "target_root": str(target),
+                        "apply": True,
+                    },
+                )["sync"]
+                self.assertEqual(["new.md"], applied["copied"])
+                self.assertEqual(
+                    "target",
+                    (target / "conflict.md").read_text(encoding="utf-8"),
+                )
+                self.assertEqual(
+                    "new", (target / "new.md").read_text(encoding="utf-8")
+                )
+                self.assertTrue(applied["target_source_id"])
+                self.assertEqual(2, applied["indexed_files"])
+            finally:
+                self._stop_server(server, thread)
+
     @staticmethod
     def _get(url):
         with urlopen(url) as response:

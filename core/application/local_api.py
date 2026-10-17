@@ -15,6 +15,11 @@ from services.knowledge.file_lifecycle import (
     FileLifecycleError,
     relocate_markdown_file,
 )
+from services.knowledge.folder_sync import (
+    FolderSyncCommand,
+    FolderSyncError,
+    synchronize_folders,
+)
 from storage.credentials import get_secret, set_secret
 from storage.data_sources import (
     inspect_sqlite,
@@ -23,6 +28,7 @@ from storage.data_sources import (
     read_file_binary,
     read_file_preview,
     search_files,
+    source_root,
     write_file_text,
     register_source,
     scan_source,
@@ -310,6 +316,47 @@ class _Handler(BaseHTTPRequestHandler):
             except (ValueError, OSError) as exc:
                 self._send_json(
                     {"error": str(exc)}, HTTPStatus.BAD_REQUEST
+                )
+            return
+        if self.path == "/api/v1/folder-sync":
+            try:
+                payload = self._read_json()
+                source_id = str(payload.get("source_id", "")).strip()
+                target_root = str(payload.get("target_root", "")).strip()
+                apply = payload.get("apply") is True
+                if not source_id:
+                    raise FolderSyncError("source_id_required")
+                if not target_root:
+                    raise FolderSyncError("target_root_required")
+                result = synchronize_folders(
+                    FolderSyncCommand(
+                        source_root=source_root(
+                            source_id,
+                            database_path=self.server.database_path,
+                        ),
+                        target_root=target_root,
+                        apply=apply,
+                    )
+                )
+                if apply:
+                    target_source_id = register_source(
+                        Path(target_root).name or "同步文件夹",
+                        target_root,
+                        source_type="local_folder",
+                        read_only=False,
+                        database_path=self.server.database_path,
+                    )
+                    result["target_source_id"] = target_source_id
+                    result["indexed_files"] = scan_source(
+                        target_source_id,
+                        database_path=self.server.database_path,
+                    )
+                self._send_json({"sync": result})
+            except FolderSyncError as exc:
+                self._send_json({"error": exc.code}, HTTPStatus.BAD_REQUEST)
+            except (KeyError, NotADirectoryError, OSError, ValueError):
+                self._send_json(
+                    {"error": "folder_sync_failed"}, HTTPStatus.BAD_REQUEST
                 )
             return
         if self.path == "/api/v1/files":

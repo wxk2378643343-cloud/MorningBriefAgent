@@ -16,11 +16,11 @@
 
 <br>
 
-一个 Windows 优先的本地知识库与行动闭环 Agent：把飞书、Obsidian、本地消息、新闻和可选领域数据串成可定时执行的工作流。
+一个 Windows 优先的本地知识库与行动闭环 Agent：把飞书、Markdown 文件夹、本地消息、新闻和可选领域数据串成可定时执行的工作流。
 
 项目目前适合个人自托管、二次开发和自动化方案参考；它不是开箱即用的 SaaS，也尚未达到面向多租户的生产级服务标准。源码不包含任何特定用户的目标、作息、学校、职业或生活规划。
 
-> 本项目与飞书、Obsidian、微信或 Google Antigravity 均无官方隶属关系。涉及本地聊天数据库的功能只应处理你有权访问的数据，并遵守所在地法律、平台条款和他人隐私。
+> 本项目与飞书、任何 Markdown 编辑器、微信或 Google Antigravity 均无官方隶属关系。涉及本地聊天数据库的功能只应处理你有权访问的数据，并遵守所在地法律、平台条款和他人隐私。
 
 ## 目录
 
@@ -74,7 +74,7 @@ MorningBriefAgent 的目标，是把这类脚本收敛为一个“本地数据 +
 - 本地文件、SQLite、邮件和聊天数据库是可替换的数据输入；
 - Agent 负责理解上下文、提炼语义和生成计划，不把个人规划硬编码在 Python 分支中；
 - 业务服务只处理领域流程，不直接依赖飞书 SDK 或具体文件路径；
-- 飞书卡片、任务、日历和 Obsidian 写入通过统一网关、契约、幂等和 Outbox 保障可恢复性；
+- 飞书卡片、任务、日历和 Markdown 文件夹写入通过统一网关、契约、幂等和 Outbox 保障可恢复性；
 - 默认以单用户、自托管、Windows 优先为目标，不伪装成多租户 SaaS。
 
 因此，这个项目更适合作为个人生产力 Agent 的架构样板、飞书自动化的二次开发基础，以及本地敏感数据工作流的工程实践参考。
@@ -86,7 +86,7 @@ MorningBriefAgent 的目标，是把这类脚本收敛为一个“本地数据 +
 | 运行时 | Python 3.10+、Windows 10/11 优先 |
 | 外部平台 | Feishu/Lark Open API、WebSocket 长连接 |
 | Agent | 本地 Agent Provider；通过单一对话边界接入，支持 Mock |
-| 本地存储 | Markdown/Obsidian、SQLite、可选本地邮件和聊天数据库 |
+| 本地存储 | Markdown 文件夹、SQLite、可选本地邮件和聊天数据库 |
 | 网络与解析 | `requests`、Python 标准库 RSS/XML/JSON 解析、BeautifulSoup |
 | 数据契约 | `dataclass`，用于 Agent 计划、同步命令和跨层数据 |
 | 可靠性 | SQLite 幂等键、Outbox、退避重试、Dead Letter、相关性标识 |
@@ -100,7 +100,7 @@ MorningBriefAgent 的目标，是把这类脚本收敛为一个“本地数据 +
 ```mermaid
 flowchart TD
     subgraph Inputs["本地输入与公开来源"]
-        Vault["Obsidian / Markdown"]
+        Vault["本地 Markdown 文件夹"]
         Mail["邮件目录"]
         ChatDB["聊天 SQLite"]
         RSS["RSS / JSON 新闻源"]
@@ -124,7 +124,7 @@ flowchart TD
     subgraph Adapters["端口与适配器"]
         Feishu["FeishuGateway\n卡片 · 任务 · 日历"]
         Readers["文件 / 邮件 / 聊天 / RSS Readers"]
-        LocalWriter["Markdown / Obsidian Writer"]
+        LocalWriter["Markdown Folder Writer"]
     end
 
     subgraph External["外部系统"]
@@ -230,10 +230,10 @@ Provider、Feishu Gateway、RSS、聊天读取器和 SQLite 存储都可以用 M
 
 | 能力 | 命令 | 主要依赖 | 当前状态 |
 | --- | --- | --- | --- |
-| 知识库与晨间简报 | `python main.py brief` | Obsidian、可选本地 Agent、飞书 | 可用，目录结构需适配 |
+| 知识库与晨间简报 | `python main.py brief` | Markdown 文件夹、可选本地 Agent、飞书 | 可用，目录结构需适配 |
 | 微信沟通复盘 | `python main.py chat` | 合法取得的本地解密库、可选 zstd | 实验性，微信数据库结构可能变化 |
 | 国内外与技术资讯 | `python main.py news` | 网络、飞书 | 可用，外部源可能失效 |
-| 可选活动与饮食建议 | `python main.py fitness` | Obsidian、飞书 | 可用，内容来自本地数据 |
+| 可选活动与饮食建议 | `python main.py fitness` | Markdown 文件夹、飞书 | 可用，内容来自本地数据 |
 | 市场与基金摘要 | `python main.py fund` | 网络、飞书 | 实验性，不构成投资建议 |
 | 早晚待办闭环 | `todo-morning` / `todo-evening` | 本地上下文、飞书任务与日历 | 可用，计划由 Agent 生成 |
 | 双向飞书机器人 | `python main.py bot` | 飞书长连接、本地 AGY 桥接 | 实验性，仅建议单用户自托管 |
@@ -243,7 +243,7 @@ Provider、Feishu Gateway、RSS、聊天读取器和 SQLite 存储都可以用 M
 - Windows 10/11；
 - Python 3.10 或更高版本；
 - 一个已启用机器人能力的飞书企业自建应用；
-- 可写入的 Obsidian Vault（使用相关功能时）；
+- 可写入的本地 Markdown 文件夹（使用相关功能时）；
 - Google Antigravity 本地 `language_server`（仅双向智能问答需要，属于非标准本地集成）；
 - 本地微信解密数据库（仅聊天复盘需要，本项目不提供解密工具或绕过访问控制的方法）。
 
@@ -271,7 +271,7 @@ python main.py doctor
 ```
 
 这三个命令就是最小离线运行方式，不需要飞书凭据、微信数据库、
-Obsidian Vault 或本地 Agent。只要 Python 3.10+ 和
+Markdown 知识库或本地 Agent。只要 Python 3.10+ 和
 `pip install -r requirements.txt` 成功，用户即可验证项目基础功能。
 
 默认测试不会访问真实飞书。需要验证本机凭据和只读任务接口时，可显式运行：
