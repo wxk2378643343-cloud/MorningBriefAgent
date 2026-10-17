@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { FilePlus2, FolderOpen, RefreshCw } from "lucide-react";
-import { apiUrl, fetchJson } from "../../localApi";
+import { Clock3, FilePlus2, FolderOpen, RefreshCw } from "lucide-react";
+import { fetchJson } from "../../localApi";
 import FileTree from "../FileTree";
 import FileEditorPane from "./FileEditorPane";
 import {
@@ -8,18 +8,13 @@ import {
   lifecycleRequest,
   renameDestination,
 } from "./fileLifecycle";
+import {
+  formatFileUpdatedAt,
+  normalizeWorkspaceFile,
+} from "./fileMetadata";
 import "./fileWorkspace.css";
 
 const TEXT_TYPES = new Set(["markdown", "json", "log", "file"]);
-
-function asFile(item) {
-  return {
-    name: item.file_name,
-    type: String(item.file_type || "").toLowerCase(),
-    relativePath: item.relative_path,
-    modifiedAt: item.modified_at,
-  };
-}
 
 export default function FileWorkspace({ serviceState }) {
   const [source, setSource] = useState(null);
@@ -47,9 +42,9 @@ export default function FileWorkspace({ serviceState }) {
       ) ?? sources.sources?.[0];
       if (!nextSource) throw new Error("no_source");
       const payload = await fetchJson(
-        `/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}`,
+        `/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}&sort=recent`,
       );
-      const nextFiles = (payload.files ?? []).map(asFile);
+      const nextFiles = (payload.files ?? []).map(normalizeWorkspaceFile);
       setSource(nextSource);
       setFiles(nextFiles);
       setLive(true);
@@ -240,6 +235,25 @@ export default function FileWorkspace({ serviceState }) {
             <span>EXPLORER</span>
             <small>{files.length} 个文件</small>
           </div>
+          <div className="recent-files" aria-label="最近修改">
+            <div className="recent-files-title">
+              <span>最近修改</span>
+              <Clock3 size={12} />
+            </div>
+            {files.slice(0, 5).map((file) => (
+              <button
+                className={selected === file.relativePath ? "active" : ""}
+                key={file.relativePath}
+                onClick={() => openFile(file.relativePath)}
+                type="button"
+              >
+                <span>{file.name}</span>
+                <small>{formatFileUpdatedAt(file.updatedAt)}</small>
+              </button>
+            ))}
+            {!files.length && <p>暂无已索引文件</p>}
+          </div>
+          <div className="all-files-label">全部文件</div>
           <FileTree files={files.map((file) => [file.name, file.type, "", "", file.relativePath])} selected={selected} onSelect={openFile} />
           <div className="explorer-status">
             <span className={`local-indicator ${live && serviceState === "ready" ? "online" : ""}`} />

@@ -8,6 +8,7 @@ import mimetypes
 import os
 import sqlite3
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Iterable
@@ -176,18 +177,104 @@ def list_files(
     source_id: str,
     *,
     file_type: str | None = None,
+    sort: str = "path",
+    limit: int | None = None,
     database_path: str | os.PathLike[str] | None = None,
 ) -> list[dict[str, object]]:
+    """Return the stable file metadata contract for one registered source."""
     initialize(database_path)
-    query = "SELECT * FROM file_records WHERE data_source_id = ?"
+    if sort not in {"path", "recent"}:
+        raise ValueError(f"unsupported_file_sort:{sort}")
+    if limit is not None and not 1 <= limit <= 5000:
+        raise ValueError("file_limit_out_of_range")
+    query = """
+        SELECT files.*, sources.name AS source_name,
+               sources.source_type AS source_type,
+               sources.root_path AS source_root
+        FROM file_records AS files
+        JOIN data_sources AS sources ON sources.id = files.data_source_id
+        WHERE files.data_source_id = ?
+    """
     params: list[object] = [source_id]
     if file_type:
-        query += " AND file_type = ?"
+        query += " AND files.file_type = ?"
         params.append(file_type)
-    query += " ORDER BY relative_path"
+    if sort == "recent":
+        query += """
+            ORDER BY
+              CASE
+                WHEN files.modified_at IS NULL
+                  OR TRIM(files.modified_at) = ''
+                  OR CAST(files.modified_at AS REAL) <= 0
+                THEN 1 ELSE 0
+              END,
+              CAST(files.modified_at AS REAL) DESC,
+              files.relative_path COLLATE NOCASE ASC,
+              files.id ASC
+        """
+    else:
+        query += (
+            " ORDER BY files.relative_path COLLATE NOCASE ASC, files.id ASC"
+        )
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
     with connect(database_path) as connection:
         rows = connection.execute(query, params).fetchall()
-    return [dict(row) for row in rows]
+    return [_file_metadata_contract(dict(row)) for row in rows]
+
+
+def _file_metadata_contract(row: dict[str, object]) -> dict[str, object]:
+    """Project persisted index data and current file metadata for API consumers."""
+    source_root = Path(str(row.pop("source_root", ""))).resolve()
+    source = {
+        "id": str(row["data_source_id"]),
+        "name": str(row.pop("source_name", "") or ""),
+        "type": str(row.pop("source_type", "") or "unknown"),
+    }
+    row["source"] = source
+    row["updated_at"] = _timestamp_as_utc(row.get("modified_at"))
+    row["sync_status"] = _file_sync_status(row, source_root)
+    return row
+
+
+def _timestamp_as_utc(value: object) -> str | None:
+    try:
+        timestamp = float(str(value))
+    except (TypeError, ValueError):
+        return None
+    if timestamp <= 0:
+        return None
+    try:
+        return (
+            datetime.fromtimestamp(timestamp, timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+    except (OSError, OverflowError, ValueError):
+        return None
+
+
+def _file_sync_status(row: dict[str, object], source_root: Path) -> str:
+    """Compare the durable index snapshot with current local file metadata."""
+    relative_path = str(row.get("relative_path") or "")
+    target = (source_root / relative_path).resolve()
+    if source_root != target and source_root not in target.parents:
+        return "unknown"
+    try:
+        stat = target.stat()
+    except (FileNotFoundError, OSError):
+        return "missing"
+    try:
+        indexed_size = int(row["size_bytes"])
+        indexed_modified = float(str(row["modified_at"]))
+    except (KeyError, TypeError, ValueError):
+        return "unknown"
+    if not row.get("content_hash") or indexed_modified <= 0:
+        return "unknown"
+    if indexed_size != stat.st_size or abs(indexed_modified - stat.st_mtime) > 0.000001:
+        return "stale"
+    return "synced"
 
 
 def read_file_preview(

@@ -2,6 +2,8 @@ import React, { useEffect } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import {
+  Clock3,
+  Database,
   FileText,
   FolderInput,
   PencilLine,
@@ -11,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { canRelocateFile } from "./fileLifecycle";
+import { formatFileUpdatedAt, syncStatusLabel } from "./fileMetadata";
 
 function FileTabs({ tabs, selected, files, onSelect, onClose }) {
   return (
@@ -133,6 +136,20 @@ export default function FileEditorPane({
           </div>
         )}
       </header>
+      <div className="file-metadata" aria-label="文件元数据">
+        <span title={`来源类型：${file.sourceType}`}>
+          <Database size={13} />
+          来源：{file.sourceName}
+        </span>
+        <span>
+          <Clock3 size={13} />
+          更新：{formatFileUpdatedAt(file.updatedAt)}
+        </span>
+        <span className={`sync-status ${file.syncStatus}`}>
+          <i aria-hidden="true" />
+          同步：{syncStatusLabel(file.syncStatus)}
+        </span>
+      </div>
       {message && <div className="editor-message">{message}</div>}
       <div className="editor-content">
         {editing && editable ? (

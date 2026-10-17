@@ -1,4 +1,5 @@
 import json
+import os
 import tempfile
 import threading
 import unittest
@@ -61,7 +62,9 @@ class LocalFileApiTests(unittest.TestCase):
             try:
                 base = f"http://127.0.0.1:{server.server_port}"
                 sources = self._get(f"{base}/api/v1/data-sources")
-                files = self._get(f"{base}/api/v1/files?source_id={source_id}")
+                files = self._get(
+                    f"{base}/api/v1/files?source_id={source_id}&sort=recent"
+                )
                 preview = self._get(
                     f"{base}/api/v1/files?source_id={source_id}&path=brief.md"
                 )
@@ -72,8 +75,22 @@ class LocalFileApiTests(unittest.TestCase):
                 binary = self._get(
                     f"{base}/api/v1/file-binary?source_id={source_id}&path=pixel.png"
                 )
+                files_by_path = {
+                    item["relative_path"]: item for item in files["files"]
+                }
                 self.assertEqual(sources["sources"][0]["name"], "Vault")
-                self.assertEqual(files["files"][0]["relative_path"], "brief.md")
+                self.assertEqual(files["sort"], "recent")
+                self.assertEqual(
+                    files_by_path["brief.md"]["source"]["name"],
+                    "Vault",
+                )
+                self.assertEqual(
+                    files_by_path["brief.md"]["sync_status"],
+                    "synced",
+                )
+                self.assertTrue(
+                    files_by_path["brief.md"]["updated_at"].endswith("Z")
+                )
                 self.assertEqual(preview["file"]["content"], "# Brief")
                 self.assertEqual(database["database"]["tables"], ["notes"])
                 self.assertEqual(database["database"]["rows"][0]["body"], "hello")
@@ -198,6 +215,49 @@ class LocalFileApiTests(unittest.TestCase):
                 server.shutdown()
                 server.server_close()
                 thread.join(timeout=2)
+
+    def test_recent_file_metadata_survives_api_restart(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            root.mkdir()
+            first = root / "first.md"
+            second = root / "second.md"
+            first.write_text("first", encoding="utf-8")
+            second.write_text("second", encoding="utf-8")
+            os.utime(first, (1_700_000_000, 1_700_000_000))
+            os.utime(second, (1_800_000_000, 1_800_000_000))
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+            import storage.data_sources as data_sources
+
+            with patch.object(data_sources, "initialize"), patch.object(
+                data_sources, "connect", side_effect=lambda path=None: connect(database)
+            ):
+                source_id = register_source("Restart vault", root)
+                scan_source(source_id)
+
+            snapshots = []
+            for _ in range(2):
+                server = create_local_server(database_path=database)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                try:
+                    snapshots.append(
+                        self._get(
+                            f"http://127.0.0.1:{server.server_port}"
+                            f"/api/v1/files?source_id={source_id}&sort=recent&limit=2"
+                        )
+                    )
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=2)
+
+            self.assertEqual(snapshots[0], snapshots[1])
+            self.assertEqual(
+                ["second.md", "first.md"],
+                [item["relative_path"] for item in snapshots[0]["files"]],
+            )
 
     @staticmethod
     def _get(url):

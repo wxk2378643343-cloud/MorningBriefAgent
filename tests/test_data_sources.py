@@ -1,3 +1,4 @@
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -115,6 +116,76 @@ class DataSourceIndexTests(unittest.TestCase):
                     ["note.md"],
                     [item["relative_path"] for item in list_files(source_id)],
                 )
+
+    def test_recent_files_have_stable_order_and_source_sync_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            root.mkdir()
+            older = root / "older.md"
+            first = root / "a.md"
+            second = root / "b.md"
+            for path in (older, first, second):
+                path.write_text(path.stem, encoding="utf-8")
+            os.utime(older, (1_700_000_000, 1_700_000_000))
+            os.utime(first, (1_800_000_000, 1_800_000_000))
+            os.utime(second, (1_800_000_000, 1_800_000_000))
+
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+            with self._database_override(database):
+                source_id = register_source(
+                    "Demo vault",
+                    root,
+                    source_type="obsidian",
+                )
+                scan_source(source_id)
+                files = list_files(source_id, sort="recent")
+
+                self.assertEqual(
+                    ["a.md", "b.md", "older.md"],
+                    [item["relative_path"] for item in files],
+                )
+                self.assertEqual(
+                    {"id": source_id, "name": "Demo vault", "type": "obsidian"},
+                    files[0]["source"],
+                )
+                self.assertEqual("2027-01-15T08:00:00.000Z", files[0]["updated_at"])
+                self.assertEqual("synced", files[0]["sync_status"])
+
+                first.write_text("changed-size", encoding="utf-8")
+                older.unlink()
+                statuses = {
+                    item["relative_path"]: item["sync_status"]
+                    for item in list_files(source_id)
+                }
+                self.assertEqual("stale", statuses["a.md"])
+                self.assertEqual("missing", statuses["older.md"])
+
+    def test_missing_index_metadata_uses_explicit_fallbacks(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            root.mkdir()
+            note = root / "note.md"
+            note.write_text("note", encoding="utf-8")
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+            with self._database_override(database):
+                source_id = register_source("Demo vault", root)
+                scan_source(source_id)
+                from storage.sqlite import connect
+
+                with connect(database) as connection:
+                    connection.execute(
+                        """
+                        UPDATE file_records
+                        SET modified_at = NULL, content_hash = NULL
+                        WHERE data_source_id = ?
+                        """,
+                        (source_id,),
+                    )
+                item = list_files(source_id, sort="recent")[0]
+                self.assertIsNone(item["updated_at"])
+                self.assertEqual("unknown", item["sync_status"])
 
     def _database_override(self, database: Path):
         from unittest.mock import patch
