@@ -3,11 +3,14 @@ import CodeMirror from "@uiw/react-codemirror";
 import { markdown } from "@codemirror/lang-markdown";
 import {
   FileText,
+  FolderInput,
   PencilLine,
   Save,
   Trash2,
+  Type,
   X,
 } from "lucide-react";
+import { canRelocateFile } from "./fileLifecycle";
 
 function FileTabs({ tabs, selected, files, onSelect, onClose }) {
   return (
@@ -57,6 +60,8 @@ export default function FileEditorPane({
   onChange,
   onSave,
   onDelete,
+  onMove,
+  onRename,
 }) {
   useEffect(() => {
     const saveWithShortcut = (event) => {
@@ -79,7 +84,7 @@ export default function FileEditorPane({
     );
   }
 
-  const editable = file.type === "markdown";
+  const editable = canRelocateFile(file);
   return (
     <section className="file-editor">
       <FileTabs
@@ -112,6 +117,14 @@ export default function FileEditorPane({
             >
               <Save size={15} />
               {saving ? "保存中" : "保存"}
+            </button>
+            <button className="editor-action" onClick={onRename} type="button">
+              <Type size={15} />
+              重命名
+            </button>
+            <button className="editor-action" onClick={onMove} type="button">
+              <FolderInput size={15} />
+              移动
             </button>
             <button className="editor-action danger" onClick={onDelete} type="button">
               <Trash2 size={15} />

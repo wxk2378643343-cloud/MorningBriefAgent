@@ -4,6 +4,7 @@ import threading
 import unittest
 from pathlib import Path
 from urllib.request import urlopen
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from core.application.local_api import create_local_server
@@ -82,6 +83,117 @@ class LocalFileApiTests(unittest.TestCase):
                     {"name": "Vault copy", "root_path": str(root)},
                 )
                 self.assertEqual(created["indexed_files"], 3)
+                moved = self._patch(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "brief.md",
+                        "destination_path": "archive/renamed.md",
+                    },
+                )
+                self.assertEqual(moved["destination_path"], "archive/renamed.md")
+                self.assertFalse((root / "brief.md").exists())
+                self.assertTrue((root / "archive" / "renamed.md").is_file())
+                self.assertEqual(
+                    "# Brief",
+                    (root / "archive" / "renamed.md").read_text(encoding="utf-8"),
+                )
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_file_move_rejects_unsafe_cross_source_and_existing_targets(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            root.mkdir()
+            original = root / "brief.md"
+            original.write_text("# Brief", encoding="utf-8")
+            (root / "existing.md").write_text("# Existing", encoding="utf-8")
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+            import storage.data_sources as data_sources
+
+            with patch.object(data_sources, "initialize"), patch.object(
+                data_sources, "connect", side_effect=lambda path=None: connect(database)
+            ):
+                source_id = register_source("Vault", root)
+                scan_source(source_id)
+
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                base = f"http://127.0.0.1:{server.server_port}/api/v1/files"
+                cases = [
+                    (
+                        {
+                            "source_id": source_id,
+                            "path": "brief.md",
+                            "destination_path": "../outside.md",
+                        },
+                        400,
+                        "invalid_relative_path",
+                    ),
+                    (
+                        {
+                            "source_id": source_id,
+                            "path": "brief.md",
+                            "destination_path": str((root / "absolute.md").resolve()),
+                        },
+                        400,
+                        "invalid_relative_path",
+                    ),
+                    (
+                        {
+                            "source_id": source_id,
+                            "path": str(original.resolve()),
+                            "destination_path": "renamed.md",
+                        },
+                        400,
+                        "invalid_relative_path",
+                    ),
+                    (
+                        {
+                            "source_id": source_id,
+                            "destination_source_id": "another-source",
+                            "path": "brief.md",
+                            "destination_path": "moved.md",
+                        },
+                        400,
+                        "cross_source_move_not_allowed",
+                    ),
+                    (
+                        {
+                            "source_id": source_id,
+                            "path": "brief.txt",
+                            "destination_path": "renamed.txt",
+                        },
+                        400,
+                        "only_markdown_files_can_be_moved",
+                    ),
+                    (
+                        {
+                            "source_id": source_id,
+                            "path": "brief.md",
+                            "destination_path": "existing.md",
+                        },
+                        409,
+                        "destination_exists",
+                    ),
+                ]
+                for payload, expected_status, expected_error in cases:
+                    with self.subTest(expected_error=expected_error):
+                        error = self._patch_error(base, payload)
+                        self.assertEqual(error.code, expected_status)
+                        response = json.loads(error.read().decode("utf-8"))
+                        self.assertEqual(response, {"error": expected_error})
+                        self.assertNotIn(str(root), json.dumps(response))
+                self.assertEqual("# Brief", original.read_text(encoding="utf-8"))
+                self.assertEqual(
+                    "# Existing",
+                    (root / "existing.md").read_text(encoding="utf-8"),
+                )
             finally:
                 server.shutdown()
                 server.server_close()
@@ -104,6 +216,27 @@ class LocalFileApiTests(unittest.TestCase):
         )
         with urlopen(request) as response:
             return json.loads(response.read().decode("utf-8"))
+
+    @staticmethod
+    def _patch(url, payload):
+        from urllib.request import Request
+
+        request = Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="PATCH",
+        )
+        with urlopen(request) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    @classmethod
+    def _patch_error(cls, url, payload):
+        try:
+            cls._patch(url, payload)
+        except HTTPError as error:
+            return error
+        raise AssertionError("Expected PATCH request to fail")
 
 
 if __name__ == "__main__":

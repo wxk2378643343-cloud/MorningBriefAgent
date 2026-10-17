@@ -3,6 +3,11 @@ import { FilePlus2, FolderOpen, RefreshCw } from "lucide-react";
 import { apiUrl, fetchJson } from "../../localApi";
 import FileTree from "../FileTree";
 import FileEditorPane from "./FileEditorPane";
+import {
+  lifecycleErrorMessage,
+  lifecycleRequest,
+  renameDestination,
+} from "./fileLifecycle";
 import "./fileWorkspace.css";
 
 const TEXT_TYPES = new Set(["markdown", "json", "log", "file"]);
@@ -170,6 +175,48 @@ export default function FileWorkspace({ serviceState }) {
     }
   };
 
+  const relocateSelectedFile = async (destinationPath, successMessage) => {
+    if (!source || !selectedFile || !destinationPath) return;
+    const previousPath = selectedFile.relativePath;
+    setMessage("");
+    try {
+      const request = lifecycleRequest(source.id, previousPath, destinationPath);
+      const payload = await fetchJson(request.path, request.options);
+      const nextPath = payload.destination_path;
+      setTabs((current) => current.map((path) => (
+        path === previousPath ? nextPath : path
+      )));
+      setSelected(nextPath);
+      setEditing(false);
+      setMessage(successMessage);
+      await loadFiles();
+    } catch (error) {
+      setMessage(lifecycleErrorMessage(error.message));
+    }
+  };
+
+  const renameSelectedFile = async () => {
+    if (!selectedFile) return;
+    const nextName = window.prompt("新的 Markdown 文件名", selectedFile.name);
+    if (nextName === null) return;
+    const destinationPath = renameDestination(selectedFile.relativePath, nextName);
+    if (!destinationPath) {
+      setMessage("请输入不包含路径分隔符的文件名。");
+      return;
+    }
+    await relocateSelectedFile(destinationPath, "文件已重命名。");
+  };
+
+  const moveSelectedFile = async () => {
+    if (!selectedFile) return;
+    const destinationPath = window.prompt(
+      "移动到知识库内的相对路径",
+      selectedFile.relativePath,
+    );
+    if (destinationPath === null) return;
+    await relocateSelectedFile(destinationPath.trim(), "文件已移动。");
+  };
+
   const binaryUrl = binaryPreview
     ? `data:${binaryPreview.content_type};base64,${binaryPreview.content_base64}`
     : null;
@@ -209,6 +256,8 @@ export default function FileWorkspace({ serviceState }) {
           onChange={setDraft}
           onClose={closeFile}
           onDelete={deleteSelectedFile}
+          onMove={moveSelectedFile}
+          onRename={renameSelectedFile}
           onSave={saveFile}
           onSelect={openFile}
           onToggleEdit={() => setEditing((value) => !value)}
