@@ -5,7 +5,31 @@ use tauri::Manager;
 
 struct LocalApiProcess(Mutex<Option<Child>>);
 
+fn local_database_path() -> PathBuf {
+    let base = std::env::var("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| std::env::temp_dir());
+    let data_dir = base.join("MorningBrief");
+    let _ = std::fs::create_dir_all(&data_dir);
+    data_dir.join("app.sqlite3")
+}
+
 fn start_local_api() -> Result<Child, String> {
+    let database = local_database_path();
+    let installed_sidecar = std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(|parent| parent.join("morningbrief-local-api.exe")));
+    if let Some(sidecar) = installed_sidecar {
+        if sidecar.is_file() {
+            return Command::new(sidecar)
+                .arg("--port")
+                .arg("8765")
+                .arg("--database")
+                .arg(&database)
+                .spawn()
+                .map_err(|error| format!("failed to start bundled local api: {error}"));
+        }
+    }
     let python = std::env::var("MORNINGBRIEF_PYTHON")
         .unwrap_or_else(|_| "python".to_string());
     let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -17,6 +41,8 @@ fn start_local_api() -> Result<Child, String> {
         .arg(script)
         .arg("--port")
         .arg("8765")
+        .arg("--database")
+        .arg(database)
         .spawn()
         .map_err(|error| format!("failed to start local api: {error}"))
 }

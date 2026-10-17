@@ -60,5 +60,6 @@ API 只监听 `127.0.0.1`，默认使用本地 SQLite 配置。桌面端可以�
 
 `src-tauri/` 已提供最小桌面壳结构。开发环境需要 Rust、Cargo 和 Tauri
 依赖；启动后会尝试运行仓库根目录的 `scripts/run_local_api.py`，退出时回收
-Python 子进程。发布安装包前仍需把 Python 运行时和业务代码作为受控 sidecar
-打包，这一步不会把个人数据库或 `.env` 打进仓库。
+Python 子进程。发布流水线使用 PyInstaller 生成受控 sidecar，并将它打入
+MSI/NSIS 安装包；发布版数据写入 `%LOCALAPPDATA%\\MorningBrief`，不会把个人
+数据库或 `.env` 打进安装包。完整决策见 `docs/desktop-architecture.md`。
