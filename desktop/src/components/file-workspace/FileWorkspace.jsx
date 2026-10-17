@@ -1,5 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Clock3, FilePlus2, FolderOpen, RefreshCw } from "lucide-react";
+import {
+  Clock3,
+  FilePlus2,
+  FolderOpen,
+  RefreshCw,
+  RotateCcw,
+} from "lucide-react";
 import { fetchJson } from "../../localApi";
 import FileTree from "../FileTree";
 import FileEditorPane from "./FileEditorPane";
@@ -19,6 +25,7 @@ const TEXT_TYPES = new Set(["markdown", "json", "log", "file"]);
 export default function FileWorkspace({ serviceState }) {
   const [source, setSource] = useState(null);
   const [files, setFiles] = useState([]);
+  const [recoveries, setRecoveries] = useState([]);
   const [selected, setSelected] = useState("");
   const [tabs, setTabs] = useState([]);
   const [content, setContent] = useState(null);
@@ -41,12 +48,16 @@ export default function FileWorkspace({ serviceState }) {
         (item) => item.id === sources.active_source_id,
       ) ?? sources.sources?.[0];
       if (!nextSource) throw new Error("no_source");
-      const payload = await fetchJson(
-        `/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}&sort=recent`,
-      );
+      const [payload, recoveryPayload] = await Promise.all([
+        fetchJson(
+          `/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}&sort=recent`,
+        ),
+        fetchJson(`/api/v1/file-recoveries?source_id=${encodeURIComponent(nextSource.id)}`),
+      ]);
       const nextFiles = (payload.files ?? []).map(normalizeWorkspaceFile);
       setSource(nextSource);
       setFiles(nextFiles);
+      setRecoveries(recoveryPayload.recoveries ?? []);
       setLive(true);
       setSelected((current) => {
         if (keepSelected && nextFiles.some((file) => file.relativePath === current)) return current;
@@ -134,20 +145,49 @@ export default function FileWorkspace({ serviceState }) {
 
   const deleteSelectedFile = async () => {
     if (!source || !selectedFile) return;
-    if (!window.confirm(`确定删除“${selectedFile.name}”吗？此操作无法撤销。`)) return;
+    if (!window.confirm(`确定删除“${selectedFile.name}”吗？删除后可从本地回收记录恢复。`)) return;
     try {
-      await fetchJson("/api/v1/files", {
+      const payload = await fetchJson("/api/v1/files", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source_id: source.id, path: selectedFile.relativePath }),
+        body: JSON.stringify({
+          source_id: source.id,
+          path: selectedFile.relativePath,
+          request_id: globalThis.crypto?.randomUUID?.() ?? `delete-${Date.now()}`,
+        }),
       });
       setTabs((current) => current.filter((path) => path !== selectedFile.relativePath));
       setSelected("");
       setContent(null);
-      setMessage("文件已删除。");
+      setRecoveries((current) => [payload.recovery, ...current]);
+      setMessage("文件已移入本地回收区，可使用“恢复最近删除”撤销。");
       await loadFiles(false);
     } catch {
       setMessage("删除失败，文件仍保留在本地。");
+    }
+  };
+
+  const restoreLatestFile = async () => {
+    if (!source || !recoveries[0]) return;
+    const recovery = recoveries[0];
+    try {
+      await fetchJson("/api/v1/files/restore", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_id: source.id,
+          operation_id: recovery.id,
+        }),
+      });
+      await loadFiles(false);
+      openFile(recovery.relative_path);
+      setMessage(`已恢复 ${recovery.file_name ?? recovery.relative_path}。`);
+    } catch (error) {
+      setMessage(
+        error.message === "restore_target_exists"
+          ? "恢复失败：原路径已有文件，未覆盖现有内容。"
+          : "恢复失败，回收记录仍保留。",
+      );
     }
   };
 
@@ -226,6 +266,9 @@ export default function FileWorkspace({ serviceState }) {
         </div>
         <div className="workspace-toolbar-actions">
           <button onClick={createFile} type="button"><FilePlus2 size={15} />新建</button>
+          <button disabled={!recoveries.length} onClick={restoreLatestFile} type="button">
+            <RotateCcw size={15} />恢复最近删除
+          </button>
           <button onClick={() => loadFiles()} type="button"><RefreshCw size={15} />刷新</button>
         </div>
       </header>

@@ -22,10 +22,17 @@ from storage.data_sources import (
     list_sources,
     read_file_binary,
     read_file_preview,
+    search_files,
     write_file_text,
-    delete_file,
     register_source,
     scan_source,
+)
+from services.knowledge.file_recovery import (
+    FileRecoveryConflictError,
+    delete_file_recoverably,
+    list_file_recoveries,
+    reconcile_pending_file_operations,
+    restore_file,
 )
 from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, reset_all
 from storage.workspace import default_workspace_root, initialize_workspace, save_personal_context, workspace_info
@@ -87,6 +94,21 @@ class _Handler(BaseHTTPRequestHandler):
                     self._send_json({"error": str(exc)}, HTTPStatus.FORBIDDEN)
         elif self.path == "/api/v1/data-sources":
             self._send_json(self._data_sources_payload())
+        elif self.path.startswith("/api/v1/file-recoveries"):
+            source_id = self._query_value("source_id")
+            if not source_id:
+                self._send_json(
+                    {"error": "source_id_required"}, HTTPStatus.BAD_REQUEST
+                )
+            else:
+                self._send_json(
+                    {
+                        "recoveries": list_file_recoveries(
+                            source_id,
+                            database_path=self.server.database_path,
+                        )
+                    }
+                )
         elif self.path.startswith("/api/v1/file-binary"):
             source_id = self._query_value("source_id")
             relative_path = self._query_value("path")
@@ -102,6 +124,7 @@ class _Handler(BaseHTTPRequestHandler):
         elif self.path.startswith("/api/v1/files"):
             source_id = self._query_value("source_id")
             relative_path = self._query_value("path")
+            query = self._query_value("query")
             if not source_id:
                 self._send_json({"error": "source_id_required"}, HTTPStatus.BAD_REQUEST)
             elif relative_path:
@@ -124,12 +147,23 @@ class _Handler(BaseHTTPRequestHandler):
                     sort = self._query_value("sort") or "path"
                     limit_value = self._query_value("limit")
                     limit = int(limit_value) if limit_value is not None else None
+                    if sort not in {"path", "recent"}:
+                        raise ValueError(f"unsupported_file_sort:{sort}")
                     self._send_json({
-                        "files": list_files(
-                            source_id,
-                            sort=sort,
-                            limit=limit,
-                            database_path=self.server.database_path,
+                        "files": (
+                            search_files(
+                                source_id,
+                                query,
+                                limit=limit or 100,
+                                database_path=self.server.database_path,
+                            )
+                            if query
+                            else list_files(
+                                source_id,
+                                sort=sort,
+                                limit=limit,
+                                database_path=self.server.database_path,
+                            )
                         ),
                         "sort": sort,
                     })
@@ -255,6 +289,28 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send_json(save_personal_context(self._read_json(), database_path=self.server.database_path))
             except (ValueError, OSError, TypeError) as exc:
                 self._send_json({"error": "profile_save_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        if self.path == "/api/v1/files/restore":
+            try:
+                payload = self._read_json()
+                recovery = restore_file(
+                    str(payload.get("source_id", "")),
+                    str(payload.get("operation_id", "")),
+                    database_path=self.server.database_path,
+                )
+                self._send_json({"restored": True, "recovery": recovery})
+            except FileRecoveryConflictError as exc:
+                self._send_json(
+                    {"error": str(exc)}, HTTPStatus.CONFLICT
+                )
+            except (KeyError, FileNotFoundError) as exc:
+                self._send_json(
+                    {"error": str(exc)}, HTTPStatus.NOT_FOUND
+                )
+            except (ValueError, OSError) as exc:
+                self._send_json(
+                    {"error": str(exc)}, HTTPStatus.BAD_REQUEST
+                )
             return
         if self.path == "/api/v1/files":
             try:
@@ -422,15 +478,32 @@ class _Handler(BaseHTTPRequestHandler):
         try:
             payload = self._read_json()
             if self.path == "/api/v1/files":
-                delete_file(
+                recovery = delete_file_recoverably(
                     str(payload.get("source_id", "")),
                     str(payload.get("path", "")),
+                    request_id=(
+                        str(payload["request_id"])
+                        if payload.get("request_id") is not None
+                        else None
+                    ),
                     database_path=self.server.database_path,
                 )
             else:
                 delete_record(self.server.database_path, payload["table"], payload["id"])
-            self._send_json({"deleted": True})
-        except (KeyError, ValueError, FileNotFoundError, OSError, sqlite3.DatabaseError) as exc:
+                recovery = None
+            response: dict[str, Any] = {
+                "deleted": (
+                    recovery is None or recovery.get("status") == "deleted"
+                )
+            }
+            if recovery is not None:
+                response["recovery"] = recovery
+            self._send_json(response)
+        except FileRecoveryConflictError as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.CONFLICT)
+        except (KeyError, FileNotFoundError) as exc:
+            self._send_json({"error": str(exc)}, HTTPStatus.NOT_FOUND)
+        except (ValueError, OSError, sqlite3.DatabaseError) as exc:
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def do_PATCH(self) -> None:  # noqa: N802
@@ -520,6 +593,7 @@ class LocalApplicationServer(ThreadingHTTPServer):
     def __init__(self, database_path: str | Path | None = None, port: int = 0):
         super().__init__(("127.0.0.1", port), _Handler)
         self.database_path = database_path
+        reconcile_pending_file_operations(database_path=database_path)
 
 
 def create_local_server(

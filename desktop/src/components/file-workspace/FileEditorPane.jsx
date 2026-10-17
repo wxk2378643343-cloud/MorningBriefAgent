@@ -83,6 +83,7 @@ export default function FileEditorPane({
         <FileText size={30} />
         <h2>打开一个文件开始</h2>
         <p>从左侧文件树选择你的本地 Markdown、日志或数据文件。</p>
+        {message && <div className="editor-message">{message}</div>}
       </section>
     );
   }

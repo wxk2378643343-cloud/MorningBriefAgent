@@ -4,18 +4,23 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from urllib.request import urlopen
 from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 from unittest.mock import patch
 
 from core.application.local_api import create_local_server
-from storage.data_sources import register_source, scan_source
+from storage.data_sources import hash_file, register_source, scan_source
 from storage.sqlite import connect, initialize
 
 
 class LocalFileApiTests(unittest.TestCase):
     def test_health_endpoint_is_local_service_probe(self):
-        server = create_local_server()
+        with patch(
+            "core.application.local_api.reconcile_pending_file_operations"
+        ) as reconcile:
+            server = create_local_server()
+        reconcile.assert_called_once_with(database_path=None)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
@@ -48,19 +53,11 @@ class LocalFileApiTests(unittest.TestCase):
                 database_handle.close()
             database = Path(temp_dir) / "app.sqlite3"
             initialize(database)
-            import storage.data_sources as data_sources
+            source_id = register_source("Vault", root, database_path=database)
+            scan_source(source_id, database_path=database)
 
-            with patch.object(data_sources, "initialize"), patch.object(
-                data_sources, "connect", side_effect=lambda path=None: connect(database)
-            ):
-                source_id = register_source("Vault", root)
-                scan_source(source_id)
-
-            server = create_local_server(database_path=database)
-            thread = threading.Thread(target=server.serve_forever, daemon=True)
-            thread.start()
+            server, thread, base = self._start_server(database)
             try:
-                base = f"http://127.0.0.1:{server.server_port}"
                 sources = self._get(f"{base}/api/v1/data-sources")
                 files = self._get(
                     f"{base}/api/v1/files?source_id={source_id}&sort=recent"
@@ -116,9 +113,306 @@ class LocalFileApiTests(unittest.TestCase):
                     (root / "archive" / "renamed.md").read_text(encoding="utf-8"),
                 )
             finally:
-                server.shutdown()
-                server.server_close()
-                thread.join(timeout=2)
+                self._stop_server(server, thread)
+
+    def test_read_search_save_delete_restore_duplicate_and_restart_matrix(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, database, source_id = self._workspace(temp_dir)
+            note = root / "notes" / "today.md"
+            note.parent.mkdir()
+            note.write_text("# Today\n\nneedle in content", encoding="utf-8")
+            scan_source(source_id, database_path=database)
+
+            server, thread, base = self._start_server(database)
+            try:
+                preview = self._get(
+                    f"{base}/api/v1/files?"
+                    + urlencode({"source_id": source_id, "path": "notes/today.md"})
+                )
+                self.assertEqual(
+                    preview["file"]["content"], "# Today\n\nneedle in content"
+                )
+                search = self._get(
+                    f"{base}/api/v1/files?"
+                    + urlencode({"source_id": source_id, "query": "needle"})
+                )
+                self.assertEqual(
+                    [item["relative_path"] for item in search["files"]],
+                    ["notes/today.md"],
+                )
+                self.assertEqual(search["files"][0]["match_type"], "content")
+
+                saved = self._post(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "notes/today.md",
+                        "content": "# Updated",
+                    },
+                )
+                self.assertEqual(saved["file"]["content"], "# Updated")
+
+                deletion = self._delete(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "notes/today.md",
+                        "request_id": "delete-today-once",
+                    },
+                )
+                operation_id = deletion["recovery"]["id"]
+                self.assertFalse(note.exists())
+                self.assertEqual(deletion["recovery"]["status"], "deleted")
+                self.assertTrue(
+                    (root / deletion["recovery"]["recovery_path"]).is_file()
+                )
+
+                duplicate = self._delete(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "notes/today.md",
+                        "request_id": "delete-today-once",
+                    },
+                )
+                self.assertEqual(duplicate["recovery"]["id"], operation_id)
+                with connect(database) as connection:
+                    operation_count = connection.execute(
+                        "SELECT COUNT(*) FROM file_recovery_operations"
+                    ).fetchone()[0]
+                self.assertEqual(operation_count, 1)
+            finally:
+                self._stop_server(server, thread)
+
+            server, thread, base = self._start_server(database)
+            try:
+                files = self._get(
+                    f"{base}/api/v1/files?"
+                    + urlencode({"source_id": source_id})
+                )
+                self.assertEqual(files["files"], [])
+                recoveries = self._get(
+                    f"{base}/api/v1/file-recoveries?"
+                    + urlencode({"source_id": source_id})
+                )
+                self.assertEqual(recoveries["recoveries"][0]["id"], operation_id)
+
+                restored = self._post(
+                    f"{base}/api/v1/files/restore",
+                    {"source_id": source_id, "operation_id": operation_id},
+                )
+                self.assertEqual(restored["recovery"]["status"], "restored")
+                self.assertEqual(note.read_text(encoding="utf-8"), "# Updated")
+                duplicate_restore = self._post(
+                    f"{base}/api/v1/files/restore",
+                    {"source_id": source_id, "operation_id": operation_id},
+                )
+                self.assertEqual(
+                    duplicate_restore["recovery"]["status"], "restored"
+                )
+            finally:
+                self._stop_server(server, thread)
+
+            server, thread, base = self._start_server(database)
+            try:
+                preview = self._get(
+                    f"{base}/api/v1/files?"
+                    + urlencode({"source_id": source_id, "path": "notes/today.md"})
+                )
+                self.assertEqual(preview["file"]["content"], "# Updated")
+            finally:
+                self._stop_server(server, thread)
+
+    def test_restore_conflict_never_overwrites_replacement(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, database, source_id = self._workspace(temp_dir)
+            note = root / "conflict.md"
+            note.write_text("original", encoding="utf-8")
+            scan_source(source_id, database_path=database)
+            server, thread, base = self._start_server(database)
+            try:
+                deletion = self._delete(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "conflict.md",
+                        "request_id": "conflict-delete",
+                    },
+                )
+                note.write_text("replacement", encoding="utf-8")
+                error_status, error_payload = self._error(
+                    f"{base}/api/v1/files/restore",
+                    {
+                        "source_id": source_id,
+                        "operation_id": deletion["recovery"]["id"],
+                    },
+                    method="POST",
+                )
+                self.assertEqual(error_status, 409)
+                self.assertEqual(error_payload["error"], "restore_target_exists")
+                self.assertEqual(note.read_text(encoding="utf-8"), "replacement")
+            finally:
+                self._stop_server(server, thread)
+
+    def test_missing_traversal_and_idempotency_conflicts_are_bounded(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, database, source_id = self._workspace(temp_dir)
+            (root / "first.md").write_text("first", encoding="utf-8")
+            (root / "second.md").write_text("second", encoding="utf-8")
+            outside = Path(temp_dir) / "outside.md"
+            outside.write_text("private", encoding="utf-8")
+            scan_source(source_id, database_path=database)
+            server, thread, base = self._start_server(database)
+            try:
+                missing_status, _ = self._error(
+                    f"{base}/api/v1/files",
+                    {"source_id": source_id, "path": "missing.md"},
+                    method="DELETE",
+                )
+                self.assertEqual(missing_status, 404)
+
+                traversal_status, _ = self._error(
+                    f"{base}/api/v1/files",
+                    {"source_id": source_id, "path": "../outside.md"},
+                    method="DELETE",
+                )
+                self.assertEqual(traversal_status, 400)
+                self.assertEqual(outside.read_text(encoding="utf-8"), "private")
+
+                self._delete(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "first.md",
+                        "request_id": "same-request",
+                    },
+                )
+                conflict_status, _ = self._error(
+                    f"{base}/api/v1/files",
+                    {
+                        "source_id": source_id,
+                        "path": "second.md",
+                        "request_id": "same-request",
+                    },
+                    method="DELETE",
+                )
+                self.assertEqual(conflict_status, 409)
+                self.assertTrue((root / "second.md").is_file())
+
+                unknown_status, _ = self._error(
+                    f"{base}/api/v1/files/restore",
+                    {"source_id": source_id, "operation_id": "missing"},
+                    method="POST",
+                )
+                self.assertEqual(unknown_status, 404)
+            finally:
+                self._stop_server(server, thread)
+
+    def test_restart_reconciles_interrupted_atomic_delete(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, database, source_id = self._workspace(temp_dir)
+            note = root / "interrupted.md"
+            note.write_text("recover me", encoding="utf-8")
+            scan_source(source_id, database_path=database)
+            recovery_path = (
+                Path(".morningbrief-trash")
+                / "recovery-interrupted"
+                / "interrupted.md"
+            )
+            recovery_target = root / recovery_path
+            recovery_target.parent.mkdir(parents=True)
+            content_hash = hash_file(note)
+            with connect(database) as connection:
+                connection.execute(
+                    """
+                    INSERT INTO file_recovery_operations
+                      (id, request_id, data_source_id, relative_path,
+                       recovery_path, content_hash, status)
+                    VALUES (?, ?, ?, ?, ?, ?, 'pending')
+                    """,
+                    (
+                        "recovery-interrupted",
+                        "interrupted-request",
+                        source_id,
+                        "interrupted.md",
+                        recovery_path.as_posix(),
+                        content_hash,
+                    ),
+                )
+            note.replace(recovery_target)
+
+            server, thread, base = self._start_server(database)
+            try:
+                recoveries = self._get(
+                    f"{base}/api/v1/file-recoveries?"
+                    + urlencode({"source_id": source_id})
+                )
+                self.assertEqual(recoveries["recoveries"][0]["status"], "deleted")
+                files = self._get(
+                    f"{base}/api/v1/files?"
+                    + urlencode({"source_id": source_id})
+                )
+                self.assertEqual(files["files"], [])
+            finally:
+                self._stop_server(server, thread)
+
+            with connect(database) as connection:
+                connection.execute(
+                    """
+                    UPDATE file_recovery_operations
+                    SET status = 'restoring'
+                    WHERE id = 'recovery-interrupted'
+                    """
+                )
+            os.link(recovery_target, note)
+
+            server, thread, base = self._start_server(database)
+            try:
+                preview = self._get(
+                    f"{base}/api/v1/files?"
+                    + urlencode(
+                        {"source_id": source_id, "path": "interrupted.md"}
+                    )
+                )
+                self.assertEqual(preview["file"]["content"], "recover me")
+                with connect(database) as connection:
+                    status = connection.execute(
+                        """
+                        SELECT status FROM file_recovery_operations
+                        WHERE id = 'recovery-interrupted'
+                        """
+                    ).fetchone()["status"]
+                self.assertEqual(status, "restored")
+            finally:
+                self._stop_server(server, thread)
+
+    # File move/rename semantics are intentionally owned by Issue #65. This
+    # matrix exercises the recovery contract without introducing a second move
+    # implementation on the Issue #67 branch.
+
+    @staticmethod
+    def _workspace(temp_dir):
+        root = Path(temp_dir) / "vault"
+        root.mkdir()
+        database = Path(temp_dir) / "app.sqlite3"
+        initialize(database)
+        source_id = register_source(
+            "Vault", root, read_only=False, database_path=database
+        )
+        return root, database, source_id
+
+    @staticmethod
+    def _start_server(database):
+        server = create_local_server(database_path=database)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        return server, thread, f"http://127.0.0.1:{server.server_port}"
+
+    @staticmethod
+    def _stop_server(server, thread):
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
     def test_file_move_rejects_unsafe_cross_source_and_existing_targets(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -265,30 +559,45 @@ class LocalFileApiTests(unittest.TestCase):
             return json.loads(response.read().decode("utf-8"))
 
     @staticmethod
-    def _post(url, payload):
-        from urllib.request import Request
-
+    def _request(url, payload, method):
         request = Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
-            method="POST",
+            method=method,
         )
         with urlopen(request) as response:
             return json.loads(response.read().decode("utf-8"))
 
     @staticmethod
     def _patch(url, payload):
-        from urllib.request import Request
+        return LocalFileApiTests._request(url, payload, "PATCH")
 
+    @classmethod
+    def _post(cls, url, payload):
+        return cls._request(url, payload, "POST")
+
+    @classmethod
+    def _delete(cls, url, payload):
+        return cls._request(url, payload, "DELETE")
+
+    @staticmethod
+    def _error(url, payload, *, method):
         request = Request(
             url,
             data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json"},
-            method="PATCH",
+            method=method,
         )
-        with urlopen(request) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            urlopen(request)
+        except HTTPError as exc:
+            try:
+                payload = json.loads(exc.read().decode("utf-8"))
+                return exc.code, payload
+            finally:
+                exc.close()
+        raise AssertionError("request unexpectedly succeeded")
 
     @classmethod
     def _patch_error(cls, url, payload):
