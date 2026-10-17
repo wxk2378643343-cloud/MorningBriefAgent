@@ -10,6 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from core.agent.discovery import discovery_snapshot
+from services.knowledge.file_lifecycle import (
+    FileLifecycleCommand,
+    FileLifecycleError,
+    relocate_markdown_file,
+)
 from storage.credentials import get_secret, set_secret
 from storage.data_sources import (
     inspect_sqlite,
@@ -417,8 +422,37 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
 
     def do_PATCH(self) -> None:  # noqa: N802
-        if self.path != "/api/v1/database/records":
+        if self.path not in {"/api/v1/files", "/api/v1/database/records"}:
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
+            return
+        if self.path == "/api/v1/files":
+            try:
+                payload = self._read_json()
+                result = relocate_markdown_file(
+                    FileLifecycleCommand(
+                        source_id=str(payload.get("source_id", "")),
+                        path=str(payload.get("path", "")),
+                        destination_path=str(payload.get("destination_path", "")),
+                        destination_source_id=(
+                            str(payload["destination_source_id"])
+                            if payload.get("destination_source_id") is not None
+                            else None
+                        ),
+                    ),
+                    database_path=self.server.database_path,
+                )
+                self._send_json(result)
+            except FileLifecycleError as exc:
+                status = {
+                    "file_not_found": HTTPStatus.NOT_FOUND,
+                    "data_source_not_found": HTTPStatus.NOT_FOUND,
+                    "destination_exists": HTTPStatus.CONFLICT,
+                    "file_index_update_failed": HTTPStatus.INTERNAL_SERVER_ERROR,
+                    "file_move_failed": HTTPStatus.INTERNAL_SERVER_ERROR,
+                }.get(exc.code, HTTPStatus.BAD_REQUEST)
+                self._send_json({"error": exc.code}, status)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                self._send_json({"error": "invalid_request"}, HTTPStatus.BAD_REQUEST)
             return
         try:
             payload = self._read_json()

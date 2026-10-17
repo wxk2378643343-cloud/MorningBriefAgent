@@ -2,7 +2,14 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from storage.data_sources import list_files, list_sources, register_source, scan_source
+from storage.data_sources import (
+    FileMoveError,
+    list_files,
+    list_sources,
+    move_file,
+    register_source,
+    scan_source,
+)
 from storage.sqlite import initialize
 
 
@@ -26,6 +33,88 @@ class DataSourceIndexTests(unittest.TestCase):
                 self.assertEqual("markdown", files[0]["file_type"])
                 self.assertTrue(note.exists())
                 self.assertEqual(1, len(list_sources()))
+
+    def test_move_file_updates_disk_and_index_without_overwriting(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            source = root / "notes" / "today.md"
+            source.parent.mkdir(parents=True)
+            source.write_text("# Today", encoding="utf-8")
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+
+            with self._database_override(database):
+                source_id = register_source("Demo vault", root)
+                scan_source(source_id)
+                result = move_file(source_id, "notes/today.md", "archive/done.md")
+
+                self.assertEqual("notes/today.md", result.source_path)
+                self.assertEqual("archive/done.md", result.destination_path)
+                self.assertFalse(source.exists())
+                self.assertEqual(
+                    ["archive/done.md"],
+                    [item["relative_path"] for item in list_files(source_id)],
+                )
+                (root / "occupied.md").write_text("keep", encoding="utf-8")
+                with self.assertRaisesRegex(FileMoveError, "destination_exists"):
+                    move_file(source_id, "archive/done.md", "occupied.md")
+                self.assertEqual(
+                    "keep", (root / "occupied.md").read_text(encoding="utf-8")
+                )
+
+    def test_move_file_rejects_absolute_and_parent_paths(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            root.mkdir()
+            (root / "note.md").write_text("note", encoding="utf-8")
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+
+            with self._database_override(database):
+                source_id = register_source("Demo vault", root)
+                scan_source(source_id)
+                invalid_paths = [
+                    str((root / "absolute.md").resolve()),
+                    "../outside.md",
+                    "notes/../../outside.md",
+                    r"C:\outside.md",
+                ]
+                for destination in invalid_paths:
+                    with self.subTest(destination=destination):
+                        with self.assertRaisesRegex(
+                            FileMoveError, "invalid_relative_path"
+                        ):
+                            move_file(source_id, "note.md", destination)
+                self.assertTrue((root / "note.md").is_file())
+
+    def test_move_file_rolls_back_when_index_refresh_fails(self):
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir) / "vault"
+            root.mkdir()
+            source = root / "note.md"
+            source.write_text("note", encoding="utf-8")
+            database = Path(temp_dir) / "app.sqlite3"
+            initialize(database)
+
+            with self._database_override(database):
+                source_id = register_source("Demo vault", root)
+                scan_source(source_id)
+                with patch(
+                    "storage.data_sources.scan_source",
+                    side_effect=RuntimeError("index unavailable"),
+                ):
+                    with self.assertRaisesRegex(
+                        FileMoveError, "file_index_update_failed"
+                    ):
+                        move_file(source_id, "note.md", "moved.md")
+                self.assertTrue(source.is_file())
+                self.assertFalse((root / "moved.md").exists())
+                self.assertEqual(
+                    ["note.md"],
+                    [item["relative_path"] for item in list_files(source_id)],
+                )
 
     def _database_override(self, database: Path):
         from unittest.mock import patch

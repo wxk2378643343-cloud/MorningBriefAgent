@@ -7,11 +7,29 @@ import base64
 import mimetypes
 import os
 import sqlite3
+from dataclasses import dataclass
 from pathlib import Path
+from pathlib import PurePosixPath, PureWindowsPath
 from typing import Iterable
 from uuid import uuid4
 
 from storage.sqlite import connect, initialize
+
+
+@dataclass(frozen=True)
+class FileMoveResult:
+    """Result of moving a file within one registered data source."""
+
+    source_path: str
+    destination_path: str
+
+
+class FileMoveError(ValueError):
+    """Stable storage error that never includes an absolute local path."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
 
 
 def register_source(
@@ -266,6 +284,52 @@ def delete_file(
     scan_source(source_id, database_path=database_path)
 
 
+def move_file(
+    source_id: str,
+    relative_path: str,
+    destination_path: str,
+    *,
+    database_path: str | os.PathLike[str] | None = None,
+) -> FileMoveResult:
+    """Move one file safely inside a source, without replacing another file."""
+    root = _enabled_source_root(source_id, database_path=database_path)
+    source = _safe_source_target(root, relative_path)
+    destination = _safe_source_target(root, destination_path)
+    if source == destination:
+        raise FileMoveError("destination_same_as_source")
+    if not source.is_file():
+        raise FileMoveError("file_not_found")
+    if destination.exists():
+        raise FileMoveError("destination_exists")
+    if destination.parent.exists() and not destination.parent.is_dir():
+        raise FileMoveError("destination_parent_invalid")
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _move_without_overwrite(source, destination)
+    except FileExistsError as exc:
+        raise FileMoveError("destination_exists") from exc
+    except OSError as exc:
+        raise FileMoveError("file_move_failed") from exc
+
+    try:
+        scan_source(source_id, database_path=database_path)
+    except Exception as exc:
+        try:
+            if destination.is_file() and not source.exists():
+                source.parent.mkdir(parents=True, exist_ok=True)
+                _move_without_overwrite(destination, source)
+            scan_source(source_id, database_path=database_path)
+        except Exception:
+            pass
+        raise FileMoveError("file_index_update_failed") from exc
+
+    return FileMoveResult(
+        source_path=_relative_posix_path(root, source),
+        destination_path=_relative_posix_path(root, destination),
+    )
+
+
 def read_file_binary(
     source_id: str,
     relative_path: str,
@@ -368,3 +432,59 @@ def _iter_files(root: Path, *, include_hidden: bool) -> Iterable[Path]:
         if not include_hidden and any(part.startswith(".") for part in path.relative_to(root).parts):
             continue
         yield path
+
+
+def _enabled_source_root(
+    source_id: str,
+    *,
+    database_path: str | os.PathLike[str] | None = None,
+) -> Path:
+    initialize(database_path)
+    with connect(database_path) as connection:
+        source = connection.execute(
+            "SELECT root_path FROM data_sources WHERE id = ? AND enabled = 1",
+            (source_id,),
+        ).fetchone()
+    if source is None:
+        raise FileMoveError("data_source_not_found")
+    root = Path(str(source["root_path"])).resolve()
+    if not root.is_dir():
+        raise FileMoveError("data_source_unavailable")
+    return root
+
+
+def _safe_source_target(root: Path, relative_path: str) -> Path:
+    candidate = str(relative_path).strip()
+    windows_path = PureWindowsPath(candidate)
+    normalized = candidate.replace("\\", "/")
+    posix_path = PurePosixPath(normalized)
+    if (
+        not candidate
+        or "\x00" in candidate
+        or windows_path.is_absolute()
+        or bool(windows_path.drive)
+        or posix_path.is_absolute()
+        or any(part in {"", ".", ".."} for part in posix_path.parts)
+    ):
+        raise FileMoveError("invalid_relative_path")
+    target = (root / Path(*posix_path.parts)).resolve()
+    if root == target or root not in target.parents:
+        raise FileMoveError("invalid_relative_path")
+    return target
+
+
+def _relative_posix_path(root: Path, target: Path) -> str:
+    return target.relative_to(root).as_posix()
+
+
+def _move_without_overwrite(source: Path, destination: Path) -> None:
+    """Move a regular file with no-replace semantics on Windows and POSIX."""
+    if os.name == "nt":
+        source.rename(destination)
+        return
+    os.link(source, destination)
+    try:
+        source.unlink()
+    except OSError:
+        destination.unlink(missing_ok=True)
+        raise
