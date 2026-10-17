@@ -1,0 +1,9 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "externalBin": [
+      "binaries/morningbrief-local-api"
+    ]
+  }
+}

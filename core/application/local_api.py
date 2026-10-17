@@ -20,6 +20,7 @@ from services.knowledge.folder_sync import (
     FolderSyncError,
     synchronize_folders,
 )
+from services.subtasks import list_subtasks
 from storage.credentials import get_secret, set_secret
 from storage.data_sources import (
     inspect_sqlite,
@@ -79,6 +80,21 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"channels": discovery_snapshot()["channels"]})
         elif self.path == "/api/v1/agent/status":
             self._send_json(read_agent_status(self.server.database_path))
+        elif self.path.startswith("/api/v1/subtasks"):
+            parent_id = self._query_value("parent_id")
+            if not parent_id:
+                self._send_json(
+                    {"error": "parent_id_required"}, HTTPStatus.BAD_REQUEST
+                )
+            else:
+                self._send_json(
+                    {
+                        "subtasks": list_subtasks(
+                            parent_id,
+                            database_path=self.server.database_path,
+                        )
+                    }
+                )
         elif self.path == "/api/v1/workflows":
             self._send_json({
                 "workflows": list_workflows(self.server.database_path),
