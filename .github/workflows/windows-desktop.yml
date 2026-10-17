@@ -42,6 +42,10 @@ jobs:
         working-directory: desktop
         run: npm test -- --run
 
+      - name: Build desktop web assets
+        working-directory: desktop
+        run: npm run build
+
       - name: Build Windows installers
         working-directory: desktop
         run: npm run tauri:build -- --config src-tauri/tauri.release.conf.json
