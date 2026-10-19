@@ -5,18 +5,18 @@ import {
   FolderOpen,
   LayoutDashboard,
   Settings2,
-  Sparkles,
   Workflow,
 } from "lucide-react";
 import DesktopMenuBar from "./DesktopMenuBar";
+import { DESKTOP_SECTIONS } from "./desktopNavigation";
 
-const NAVIGATION = [
-  ["工作台", LayoutDashboard],
-  ["文件与数据", FolderOpen],
-  ["工作流", Workflow],
-  ["数据库", Database],
-  ["Agent 运行", Bot],
-];
+const NAVIGATION_ICONS = {
+  dashboard: LayoutDashboard,
+  files: FolderOpen,
+  workflow: Workflow,
+  database: Database,
+  agent: Bot,
+};
 
 function NavItem({ icon: Icon, label, active, onClick }) {
   return (
@@ -35,41 +35,31 @@ export default function ApplicationShell({
   activeSection,
   onNavigate,
   workspace,
-  serviceState,
-  serviceLabel,
   onQuickRun,
   children,
 }) {
   return (
     <div className="app-shell-frame">
-      {/* 1. 应用最外层骨架顶梁：横贯 100vw 的原生桌面菜单栏 (架子上) */}
-      <header className="shell-top-chrome">
+      <header className="shell-top-chrome" data-tauri-drag-region>
         <DesktopMenuBar
           onNavigate={onNavigate}
           activeSection={activeSection}
           workspace={workspace}
           onQuickRun={onQuickRun}
-          serviceState={serviceState}
-          serviceLabel={serviceLabel}
         />
       </header>
 
-      {/* 2. 应用骨架下部主体：左侧边栏 + 右侧主工作台 */}
       <div className="shell-workspace-body">
         <aside className="sidebar">
-          <div className="brand">
-            <span className="brand-mark"><Sparkles size={17} /></span>
-            <span>MorningBrief</span>
-          </div>
           <div className="workspace-label">本地工作台</div>
           <nav>
-            {NAVIGATION.map(([label, Icon]) => (
+            {DESKTOP_SECTIONS.map(({ key, icon }) => (
               <NavItem
-                key={label}
-                icon={Icon}
-                label={label}
-                active={activeSection === label}
-                onClick={() => onNavigate(label)}
+                key={key}
+                icon={NAVIGATION_ICONS[icon]}
+                label={key}
+                active={activeSection === key}
+                onClick={() => onNavigate(key)}
               />
             ))}
           </nav>

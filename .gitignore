@@ -65,6 +65,8 @@ vault/
 htmlcov/
 .mypy_cache/
 .ruff_cache/
+.build/
+desktop/src-tauri/binaries/*.exe
 
 # --- 6. Virtual Environments ---
 .venv/

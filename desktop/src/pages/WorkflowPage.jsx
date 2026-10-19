@@ -510,7 +510,7 @@ export default function WorkflowPage() {
                           {run.error_message}
                         </span>
                       ) : (
-                        <span className="text-slate-400">code 0 (正常)</span>
+                        <span className="text-slate-400">—</span>
                       )}
                     </td>
                     <td className="td-actions">

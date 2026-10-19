@@ -93,14 +93,22 @@
 
 .profile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 17px 0; }
 .profile-grid label { color: #6e6e73; font-size: 11px; }
-.profile-grid textarea { display: block; width: 100%; min-height: 72px; margin-top: 7px; padding: 10px; resize: vertical; border: 1px solid rgba(0, 0, 0, .12); border-radius: 12px; color: #1d1d1f; background: #fafafa; outline: none; }
-.profile-grid textarea:focus { border-color: #1d1d1f; }
+.profile-grid textarea,.profile-grid input { display: block; width: 100%; margin-top: 7px; padding: 10px; border: 1px solid rgba(0, 0, 0, .12); border-radius: 12px; color: #1d1d1f; background: #fafafa; outline: none; }
+.profile-grid textarea { min-height: 72px; resize: vertical; }
+.profile-grid textarea:focus,.profile-grid input:focus { border-color: #1d1d1f; }
+.profile-name-field { grid-column: 1 / -1; }
 
 .setup-message { margin-top: 22px; color: #6e6e73; font-size: 12px; }
 .setup-footer { display: flex; align-items: center; gap: 18px; margin-top: 28px; padding-top: 18px; border-top: 1px solid rgba(0, 0, 0, .08); }
 .setup-cancel { margin-left: auto; }
 
 .welcome-screen { min-height: 100vh; color: #1d1d1f; background: radial-gradient(circle at 50% -8%, #fff 0, #f5f5f7 48%, #ededf0 100%); }
+.name-registration-card { width:min(460px,calc(100% - 40px)); margin:14vh auto 0; padding:40px; border:1px solid rgba(0,0,0,.09); border-radius:26px; background:rgba(255,255,255,.9); box-shadow:0 24px 80px rgba(0,0,0,.08); }
+.name-registration-card h1 { margin:14px 0 10px; font-size:30px; letter-spacing:-.04em; }
+.name-registration-card p { color:#737373; font-size:13px; line-height:1.6; }
+.name-registration-card form { display:flex; gap:10px; margin-top:24px; }
+.name-registration-card input { flex:1; min-width:0; padding:12px 14px; border:1px solid rgba(0,0,0,.14); border-radius:12px; outline:none; }
+.name-registration-card input:focus { border-color:#1d1d1f; }
 .welcome-main { display: flex; flex-direction: column; align-items: center; width: calc(100% - 80px); max-width: 1380px; min-height: calc(100vh - 92px); margin: 0 auto; padding: 8vh clamp(32px, 8vw, 150px) 70px; text-align: center; }
 .welcome-badge { display: inline-flex; align-items: center; gap: 7px; padding: 8px 12px; border: 1px solid rgba(0, 0, 0, .08); border-radius: 999px; color: #6e6e73; background: rgba(255, 255, 255, .72); font-size: 10px; font-weight: 700; letter-spacing: .14em; }
 .welcome-main h1 { margin: 24px 0 16px; color: #1d1d1f; font-size: clamp(42px, 6vw, 70px); font-weight: 650; line-height: 1.02; letter-spacing: -.075em; }

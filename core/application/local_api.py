@@ -42,7 +42,13 @@ from services.knowledge.file_recovery import (
     restore_file,
 )
 from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, reset_all
-from storage.workspace import default_workspace_root, initialize_workspace, save_personal_context, workspace_info
+from storage.workspace import (
+    default_workspace_root,
+    initialize_workspace,
+    save_personal_context,
+    user_profile,
+    workspace_info,
+)
 from storage.agent_status import read_agent_status
 from storage.database_browser import create as create_record, delete as delete_record, rows as database_rows, tables as database_tables, update as update_record
 from storage.workflows import (
@@ -65,11 +71,19 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/api/v1/health":
-            self._send_json({"status": "ok", "service": "morningbrief-local-api"})
+            self._send_json(
+                {
+                    "status": "ok",
+                    "service": "morningbrief-local-api",
+                    "owner_token": self.server.owner_token,
+                }
+            )
         elif self.path == "/api/v1/app/status":
             self._send_json({"service": "ready", "workspace": workspace_info(self.server.database_path)})
         elif self.path == "/api/v1/workspace":
             self._send_json(workspace_info(self.server.database_path))
+        elif self.path == "/api/v1/profile":
+            self._send_json(user_profile(self.server.database_path))
         elif self.path == "/api/v1/onboarding/status":
             self._send_json(get_status(self.server.database_path))
         elif self.path == "/api/v1/providers/discovery":
@@ -653,9 +667,15 @@ class LocalApplicationServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(self, database_path: str | Path | None = None, port: int = 0):
+    def __init__(
+        self,
+        database_path: str | Path | None = None,
+        port: int = 0,
+        owner_token: str | None = None,
+    ):
         super().__init__(("127.0.0.1", port), _Handler)
         self.database_path = database_path
+        self.owner_token = owner_token
         reconcile_pending_file_operations(database_path=database_path)
 
 
@@ -663,6 +683,11 @@ def create_local_server(
     *,
     database_path: str | Path | None = None,
     port: int = 0,
+    owner_token: str | None = None,
 ) -> LocalApplicationServer:
     """Create, but do not start, a loopback-only application API server."""
-    return LocalApplicationServer(database_path=database_path, port=port)
+    return LocalApplicationServer(
+        database_path=database_path,
+        port=port,
+        owner_token=owner_token,
+    )

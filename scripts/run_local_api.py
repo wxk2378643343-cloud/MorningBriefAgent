@@ -21,6 +21,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the MorningBrief local API")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument(
+        "--owner-token",
+        default=None,
+        help="Opaque desktop process token exposed by health checks for ownership verification",
+    )
+    parser.add_argument(
         "--database",
         type=Path,
         default=None,
@@ -33,7 +38,11 @@ def main() -> None:
     args = parse_args()
     database_path = initialize(args.database)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    server = create_local_server(database_path=database_path, port=args.port)
+    server = create_local_server(
+        database_path=database_path,
+        port=args.port,
+        owner_token=args.owner_token,
+    )
     logging.info("local API listening on http://127.0.0.1:%s", server.server_port)
     try:
         server.serve_forever()

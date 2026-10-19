@@ -112,6 +112,11 @@ h2 em { color: #5966d8; font-style: normal; }
 .settings-state-row span { margin-top:6px; color:#8a94a6; font-size:11px; }
 .settings-note { display:flex; align-items:center; gap:9px; color:#7f8a9e; font-size:11px; }
 .settings-note svg { flex:0 0 auto; color:#7682dd; }
+.settings-profile-name { flex:1; color:#33405a; font-size:13px; }
+.settings-profile-name span { margin-top:5px; color:#8a94a6; font-size:11px; }
+.settings-profile-name input { width:100%; max-width:360px; margin-top:12px; padding:10px 12px; border:1px solid #d7dce5; border-radius:10px; background:#fff; outline:none; }
+.settings-profile-name input:focus { border-color:#1d1d1f; }
+.settings-profile-message { color:#6e6e73; }
 .settings-danger-zone { margin-top:18px; padding:16px 18px; }
 .settings-danger-zone strong { display:block; margin-bottom:5px; color:#526078; font-size:12px; }
 .settings-danger-zone p { margin:0; }
@@ -1646,45 +1651,6 @@ h2 em { color:#6e6e73; }
   flex-shrink: 0;
 }
 
-.service-status-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.service-status-pill.ready {
-  background: #ecfdf5;
-  color: #065f46;
-  border: 1px solid #a7f3d0;
-}
-
-.service-status-pill.offline {
-  background: #fef2f2;
-  color: #991b1b;
-  border: 1px solid #fecaca;
-}
-
-.service-status-pill .pulse {
-  margin-right: 0;
-}
-
-.bot-daemon-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #166534;
-  font-size: 11px;
-  font-weight: 600;
-}
-
 .topbar-action-icon-btn {
   display: grid;
   place-items: center;
@@ -2165,9 +2131,7 @@ h2 em { color:#6e6e73; }
   }
 }
 
-/* ==========================================================================
-   Desktop Native Menu Bar & Top Application Shell Frame (VS Code / Antigravity Style)
-   ========================================================================== */
+/* Desktop title bar */
 
 .app-shell-frame {
   display: flex;
@@ -2180,12 +2144,13 @@ h2 em { color:#6e6e73; }
 }
 
 .shell-top-chrome {
-  height: 38px;
+  height: 44px;
   width: 100%;
   flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(20px);
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background:
+    linear-gradient(90deg, rgba(249, 250, 253, 0.98), rgba(245, 247, 252, 0.96));
+  backdrop-filter: blur(24px);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   display: flex;
   align-items: center;
   position: relative;
@@ -2210,6 +2175,10 @@ h2 em { color:#6e6e73; }
   border-right: 1px solid rgba(0, 0, 0, 0.07);
 }
 
+.shell-workspace-body .workspace-label {
+  padding-top: 4px;
+}
+
 .shell-workspace-body .main {
   flex: 1 1 auto;
   width: calc(100% - 236px);
@@ -2225,7 +2194,7 @@ h2 em { color:#6e6e73; }
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 0 16px;
+  padding: 0 0 0 12px;
   background: transparent;
   backdrop-filter: none;
   border: none;
@@ -2239,10 +2208,22 @@ h2 em { color:#6e6e73; }
 .menubar-brand {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding-right: 12px;
-  margin-right: 6px;
-  border-right: 1px solid rgba(0, 0, 0, 0.08);
+  gap: 7px;
+  min-width: 144px;
+  padding-right: 16px;
+  margin-right: 4px;
+  color: #172033;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.menubar-brand > svg {
+  width: 24px;
+  height: 24px;
+  padding: 5px;
+  color: #fff;
+  border-radius: 8px;
+  background: linear-gradient(145deg, #1f2937, #111827);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.16);
 }
 
 .menubar-item-wrap {
@@ -2253,27 +2234,21 @@ h2 em { color:#6e6e73; }
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  padding: 4px 10px;
+  padding: 6px 11px;
   font-size: 12px;
-  font-weight: 500;
-  color: #374151;
+  font-weight: 600;
+  color: #4b5563;
   background: transparent;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
-.menubar-btn span {
-  font-size: 10px;
-  color: #9ca3af;
-  font-family: inherit;
-}
-
 .menubar-btn:hover,
 .menubar-btn.is-active {
-  background: rgba(0, 0, 0, 0.06);
-  color: #111827;
+  background: rgba(79, 70, 229, 0.08);
+  color: #3730a3;
 }
 
 .menubar-drag-zone {
@@ -2281,22 +2256,36 @@ h2 em { color:#6e6e73; }
   height: 100%;
 }
 
-.menubar-right-meta {
+.window-controls {
+  align-self: stretch;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  padding-left: 12px;
-  font-size: 11px;
-  color: #64748b;
-  user-select: none;
+  margin-left: 2px;
 }
 
-.menubar-live-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10b981;
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+.window-controls button {
+  display: grid;
+  width: 46px;
+  height: 100%;
+  place-items: center;
+  color: #64748b;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.window-controls button:hover {
+  color: #111827;
+  background: rgba(15, 23, 42, 0.07);
+}
+
+.window-controls .window-close:hover {
+  color: #fff;
+  background: #e5484d;
+}
+
+.window-controls .is-restored-icon {
+  filter: drop-shadow(-2px 2px 0 #64748b);
 }
 
 /* Floating Dropdown Menu */
@@ -2371,15 +2360,6 @@ h2 em { color:#6e6e73; }
   height: 1px;
   background: rgba(0, 0, 0, 0.06);
   margin: 4px 6px;
-}
-
-.dropdown-info-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  font-size: 11px;
-  color: #64748b;
 }
 
 /* About Modal */
@@ -2459,15 +2439,6 @@ h2 em { color:#6e6e73; }
 
 .about-meta-row strong {
   color: #111827;
-  font-weight: 600;
-}
-
-.status-badge-inline {
-  background: #ecfdf5;
-  color: #059669;
-  padding: 2px 8px;
-  border-radius: 6px;
-  font-size: 11px;
   font-weight: 600;
 }
 

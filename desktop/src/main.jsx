@@ -26,18 +26,15 @@ import FileTree from "./components/FileTree";
 import AppTopbar from "./components/AppTopbar";
 import ApplicationShell from "./components/ApplicationShell";
 import SettingsPage from "./components/SettingsPage";
-import { ONBOARDING_STEPS, SetupScreen, StartupScreen, WelcomeScreen } from "./components/onboarding/OnboardingScreen";
+import {
+  NameRegistrationScreen,
+  ONBOARDING_STEPS,
+  SetupScreen,
+  StartupScreen,
+  WelcomeScreen,
+} from "./components/onboarding/OnboardingScreen";
 
-const demoDiscovery = {
-  providers: [
-    { name: "deepseek", kind: "api", available: true, configured: true, detail: "deepseek-chat" },
-    { name: "agy", kind: "local_process", available: false, configured: false, detail: "本地 Agent 未检测到" },
-    { name: "claude", kind: "api", available: false, configured: false, detail: "API key 未配置" },
-  ],
-  channels: [
-    { name: "feishu", kind: "channel", available: false, configured: false, detail: "应用凭据未配置" },
-  ],
-};
+const EMPTY_DISCOVERY = { providers: [], channels: [] };
 
 const DesktopFileWorkspace = React.lazy(
   () => import("./components/file-workspace/FileWorkspace"),
@@ -104,7 +101,8 @@ function App() {
   const [serviceState, setServiceState] = useState("starting");
   const [status, setStatus] = useState(null);
   const [workspace, setWorkspace] = useState(null);
-  const [discovery, setDiscovery] = useState(demoDiscovery);
+  const [profile, setProfile] = useState({ display_name: "" });
+  const [discovery, setDiscovery] = useState(EMPTY_DISCOVERY);
   const [selectedProvider, setSelectedProvider] = useState("deepseek");
   const [selectedChannel, setSelectedChannel] = useState("feishu");
   const [message, setMessage] = useState("正在检查本地环境…");
@@ -138,8 +136,9 @@ function App() {
       fetchJson("/api/v1/onboarding/status"),
       fetchJson("/api/v1/workspace"),
       fetchJson("/api/v1/providers/discovery"),
+      fetchJson("/api/v1/profile"),
     ])
-      .then(([nextStatus, nextWorkspace, nextDiscovery]) => {
+      .then(([nextStatus, nextWorkspace, nextDiscovery, nextProfile]) => {
         setStatus(nextStatus);
         if (!nextStatus.complete) {
           setFirstRun(true);
@@ -147,6 +146,7 @@ function App() {
         }
         setWorkspace(nextWorkspace);
         setDiscovery(nextDiscovery);
+        setProfile(nextProfile);
         const localProvider = nextDiscovery.providers?.find((provider) => provider.kind === "local_process" && provider.available);
         if (localProvider) setSelectedProvider(localProvider.name);
         setMessage("本地服务已连接");
@@ -160,7 +160,7 @@ function App() {
   const serviceLabel = {
     starting: "本地服务启动中",
     ready: "本地服务已连接",
-    offline: "演示模式：本地服务未连接",
+    offline: "本地服务未连接",
     stopping: "本地服务正在停止",
   }[serviceState];
   const currentIndex = Math.max(0, ONBOARDING_STEPS.findIndex((step) => step.key === (setupStep ?? currentStep)));
@@ -233,13 +233,14 @@ function App() {
       />
     );
   }
+  if (!profile.display_name) {
+    return <NameRegistrationScreen onComplete={setProfile} />;
+  }
   return (
     <ApplicationShell
       activeSection={activeSection}
       onNavigate={setActiveSection}
       workspace={workspace}
-      serviceState={serviceState}
-      serviceLabel={serviceLabel}
       onQuickRun={() => setActiveSection("工作流")}
     >
       <main className="main">
@@ -248,8 +249,6 @@ function App() {
           title={activeSection === "设置" ? "设置" : activeSection === "工作台" ? "工作台" : activeSection}
           activeSection={activeSection}
           onNavigate={setActiveSection}
-          serviceState={serviceState}
-          serviceLabel={serviceLabel}
           workspace={workspace}
           onQuickRun={() => setActiveSection("工作流")}
         />
@@ -264,7 +263,9 @@ function App() {
             <DatabasePage />
           ) : activeSection === "设置" ? (
             <SettingsPage
+              profile={profile}
               status={status}
+              onProfileUpdated={setProfile}
               onOpenSetup={(stepKey) => {
                 setSetupStep(stepKey);
                 setSetupMode(true);
@@ -279,7 +280,12 @@ function App() {
           ) : activeSection !== "工作台" ? (
             <SectionPlaceholder section={activeSection} />
           ) : (
-            <WorkbenchHome onNavigate={setActiveSection} workspace={workspace} status={status} />
+            <WorkbenchHome
+              displayName={profile.display_name}
+              onNavigate={setActiveSection}
+              workspace={workspace}
+              status={status}
+            />
           )}
         </ErrorBoundary>
       </main>
@@ -287,19 +293,21 @@ function App() {
   );
 }
 
-function WorkbenchHome({ onNavigate, workspace, status }) {
+function WorkbenchHome({ displayName, onNavigate, workspace, status }) {
   const [runningKey, setRunningKey] = useState("");
   const [actionNotice, setActionNotice] = useState("");
 
   const currentHour = new Date().getHours();
+  const greetingName = displayName?.trim();
+  const salutation = greetingName ? `，${greetingName}` : "";
   const greeting =
     currentHour >= 5 && currentHour < 12
-      ? "早上好，站长 🌅"
+      ? `早上好${salutation} 🌅`
       : currentHour >= 12 && currentHour < 14
-      ? "中午好，站长 ☀️"
+      ? `中午好${salutation} ☀️`
       : currentHour >= 14 && currentHour < 18
-      ? "下午好，站长 ☕"
-      : "夜深了，站长 🌙";
+      ? `下午好${salutation} ☕`
+      : `夜深了${salutation} 🌙`;
 
   const todayStr = new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -331,13 +339,11 @@ function WorkbenchHome({ onNavigate, workspace, status }) {
           <div className="executive-date-pill">
             <Calendar size={13} className="text-indigo-600" />
             <span>{todayStr}</span>
-            <span className="dot-sep">·</span>
-            <span className="goal-tag">🎯 距2027春节目标剩 82 天</span>
           </div>
 
           <h2 className="executive-greeting-title">{greeting}</h2>
           <p className="executive-subtitle">
-            你的本地全双工智能体总控中心已就绪。所有业务数据、知识库、行情与日程均保留在本机。
+            从这里进入知识库、工作流、数据库和 Agent 运行记录。
           </p>
 
           <div className="executive-fast-actions">
@@ -426,14 +432,12 @@ function WorkbenchHome({ onNavigate, workspace, status }) {
             <div className="wb-icon-box emerald">
               <Clock size={18} />
             </div>
-            <span className="wb-badge active">系统托管中</span>
+            <span className="wb-badge">工作流</span>
           </div>
           <strong className="wb-title">自动化与定时调度</strong>
           <p className="wb-desc">早间行动派发、考研早报、全球资讯、基金投顾与晚间总结。</p>
           <div className="wb-foot">
-            <span className="wb-foot-meta text-emerald-700 font-medium">
-              ⚡ 7 个专属智能体就绪
-            </span>
+            <span className="wb-foot-meta">查看工作流与执行记录</span>
             <ChevronRight size={14} className="wb-arrow" />
           </div>
         </div>
@@ -444,12 +448,12 @@ function WorkbenchHome({ onNavigate, workspace, status }) {
             <div className="wb-icon-box amber">
               <Database size={18} />
             </div>
-            <span className="wb-badge">ACID 事务</span>
+            <span className="wb-badge">SQLite</span>
           </div>
           <strong className="wb-title">持久化业务数据库</strong>
           <p className="wb-desc">待办事实、飞书日程、基金持仓、大盘实时快照与新闻库。</p>
           <div className="wb-foot">
-            <span className="wb-foot-meta">7 张核心表 · 零外网泄露</span>
+            <span className="wb-foot-meta">查看当前数据库表</span>
             <ChevronRight size={14} className="wb-arrow" />
           </div>
         </div>
@@ -460,12 +464,12 @@ function WorkbenchHome({ onNavigate, workspace, status }) {
             <div className="wb-icon-box purple">
               <Bot size={18} />
             </div>
-            <span className="wb-badge">在线响应</span>
+            <span className="wb-badge">运行记录</span>
           </div>
           <strong className="wb-title">智能体态势与飞书</strong>
           <p className="wb-desc">多模态图片识别、DeepSeek 推理执行、富文本卡片即时推送。</p>
           <div className="wb-foot">
-            <span className="wb-foot-meta">飞书长连接守护进程活跃</span>
+            <span className="wb-foot-meta">查看实际运行状态</span>
             <ChevronRight size={14} className="wb-arrow" />
           </div>
         </div>
@@ -602,20 +606,14 @@ function AgentRuntime({ serviceState }) {
   const load = () => fetch(apiUrl("/api/v1/agent/status")).then((response) => response.json()).then((payload) => { setStatus(payload); setLive(true); }).catch(() => setLive(false));
   useEffect(() => { load(); const timer = window.setInterval(load, 5000); return () => window.clearInterval(timer); }, []);
   const latest = status.latest;
-  return <section className="runtime-page"><div className="runtime-cards"><RuntimeCard label="当前 Provider" value={latest?.provider ?? "暂无记录"} /><RuntimeCard label="最近任务" value={latest?.task ?? "暂无运行"} /><RuntimeCard label="总 Token" value={latest?.total_tokens ?? "—"} /><RuntimeCard label="耗时" value={latest?.duration_ms ? `${latest.duration_ms} ms` : "—"} /></div><div className="runtime-grid"><div className="runtime-panel"><div className="db-title"><div><span className="eyebrow">Recent runs</span><h3>最近 Agent 运行</h3></div><span className={`status-pill ${live && serviceState === "ready" ? "ok" : ""}`}>{live ? "已连接" : "演示模式"}</span></div><table><thead><tr><th>任务</th><th>Provider</th><th>Token</th><th>状态</th><th>时间</th></tr></thead><tbody>{status.recent.map((run, index) => <tr key={`${run.created_at}-${index}`}><td>{run.task}</td><td>{run.provider}</td><td>{run.total_tokens ?? "—"}</td><td>{run.status}</td><td>{run.created_at}</td></tr>)}{!status.recent.length && <tr><td colSpan="5">暂无 Agent 运行记录</td></tr>}</tbody></table></div><aside className="runtime-panel"><span className="eyebrow">Feishu sync</span><h3>同步状态</h3><div className="detail-line"><span>待处理</span><strong>{status.sync.pending}</strong></div><div className="detail-line"><span>失败待重试</span><strong>{status.sync.failed}</strong></div><button className="secondary" onClick={load}><RefreshCw size={15} />刷新状态</button></aside></div></section>;
+  return <section className="runtime-page"><div className="runtime-cards"><RuntimeCard label="当前 Provider" value={latest?.provider ?? "暂无记录"} /><RuntimeCard label="最近任务" value={latest?.task ?? "暂无运行"} /><RuntimeCard label="总 Token" value={latest?.total_tokens ?? "—"} /><RuntimeCard label="耗时" value={latest?.duration_ms ? `${latest.duration_ms} ms` : "—"} /></div><div className="runtime-grid"><div className="runtime-panel"><div className="db-title"><div><span className="eyebrow">Recent runs</span><h3>最近 Agent 运行</h3></div><span className={`status-pill ${live && serviceState === "ready" ? "ok" : ""}`}>{live ? "数据已刷新" : "读取失败"}</span></div><table><thead><tr><th>任务</th><th>Provider</th><th>Token</th><th>状态</th><th>时间</th></tr></thead><tbody>{status.recent.map((run, index) => <tr key={`${run.created_at}-${index}`}><td>{run.task}</td><td>{run.provider}</td><td>{run.total_tokens ?? "—"}</td><td>{run.status}</td><td>{run.created_at}</td></tr>)}{!status.recent.length && <tr><td colSpan="5">暂无 Agent 运行记录</td></tr>}</tbody></table></div><aside className="runtime-panel"><span className="eyebrow">Feishu sync</span><h3>同步状态</h3><div className="detail-line"><span>待处理</span><strong>{status.sync.pending}</strong></div><div className="detail-line"><span>失败待重试</span><strong>{status.sync.failed}</strong></div><button className="secondary" onClick={load}><RefreshCw size={15} />刷新状态</button></aside></div></section>;
 }
 function RuntimeCard({ label, value }) { return <div className="runtime-card"><span>{label}</span><strong>{value}</strong></div>; }
 function FileWorkspace({ serviceState }) {
-  const demoFiles = [
-    ["2026-10-15-晨间简报.md", "Markdown", "知识库 / briefings", "今天 07:45", "2026-10-15-晨间简报.md"],
-    ["app.sqlite3", "SQLite", "data / database", "今天 09:12", "app.sqlite3"],
-    ["conversation-20261015.json", "JSON", "Agent 对话 / archive", "今天 10:26", "conversation-20261015.json"],
-    ["nutrition_20261015.jpg", "图片", "图片附件 / nutrition", "今天 12:18", "nutrition_20261015.jpg"],
-    ["agent-20261015.log", "日志", "运行日志", "今天 14:03", "agent-20261015.log"],
-  ];
+  const initialFiles = [];
   const [source, setSource] = useState(null);
-  const [files, setFiles] = useState(demoFiles);
-  const [selected, setSelected] = useState(demoFiles[0][4] || demoFiles[0][0]);
+  const [files, setFiles] = useState(initialFiles);
+  const [selected, setSelected] = useState("");
   const [preview, setPreview] = useState(null);
   const [binaryPreview, setBinaryPreview] = useState(null);
   const [live, setLive] = useState(false);

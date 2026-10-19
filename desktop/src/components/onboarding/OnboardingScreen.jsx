@@ -62,6 +62,63 @@ export function WelcomeScreen({ onEnter }) {
   );
 }
 
+export function NameRegistrationScreen({ onComplete }) {
+  const [displayName, setDisplayName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (event) => {
+    event.preventDefault();
+    const normalizedName = displayName.trim();
+    if (!normalizedName) {
+      setError("请输入你希望使用的名字。");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const response = await fetch(apiUrl("/api/v1/profile"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: normalizedName }),
+      });
+      if (!response.ok) throw new Error("profile");
+      onComplete(await response.json());
+    } catch {
+      setBusy(false);
+      setError("名字保存失败，请检查本地服务后重试。");
+    }
+  };
+
+  return (
+    <div className="welcome-screen">
+      <main className="name-registration-card">
+        <div className="panel-icon green"><Sparkles size={23} /></div>
+        <span className="eyebrow">WELCOME</span>
+        <h1>你好，怎么称呼你？</h1>
+        <p>这个名字只保存在本机，用于首页问候；之后可以在设置中修改。</p>
+        <form onSubmit={submit}>
+          <input
+            autoFocus
+            autoComplete="name"
+            maxLength={40}
+            placeholder="输入你的名字"
+            value={displayName}
+            onChange={(event) => {
+              setDisplayName(event.target.value);
+              setError("");
+            }}
+          />
+          <button className="primary" disabled={busy} type="submit">
+            {busy ? "保存中…" : "进入工作台"} <ChevronRight size={16} />
+          </button>
+        </form>
+        {error && <div className="error-banner">{error}</div>}
+      </main>
+    </div>
+  );
+}
+
 export function SetupScreen({
   serviceLabel,
   serviceState,
@@ -191,7 +248,7 @@ function ChannelStep({ channels, selected, onSelect, onComplete }) {
 }
 
 function ProfileStep({ onComplete }) {
-  const [values, setValues] = useState({ "我的工作": "", "当前目标": "" });
+  const [values, setValues] = useState({ display_name: "", "我的工作": "", "当前目标": "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const submit = async () => {
@@ -202,7 +259,7 @@ function ProfileStep({ onComplete }) {
       const response = await fetch(apiUrl("/api/v1/profile"), { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
       if (!response.ok) throw new Error("profile");
       onComplete();
-    } catch { setBusy(false); setError("请填写你的工作内容和当前目标后继续。"); }
+    } catch { setBusy(false); setError("请填写你的名字、工作内容和当前目标后继续。"); }
   };
-  return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>内容会保存为工作区内的 Markdown 文件，之后可以随时修改。</p><div className="profile-grid"><label>我的工作<textarea value={values["我的工作"]} onChange={(event) => { setValues({ ...values, "我的工作": event.target.value }); setError(""); }} placeholder="例如：我负责……" /></label><label>当前目标<textarea value={values["当前目标"]} onChange={(event) => { setValues({ ...values, "当前目标": event.target.value }); setError(""); }} placeholder="例如：近期重点是……" /></label></div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "完成设置，进入工作台"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
+  return <div className="step-panel"><div className="panel-icon green"><Sparkles size={21} /></div><div className="panel-copy"><h4>建立你的个人上下文</h4><p>先告诉我该怎么称呼你；名字和个人上下文之后都可以在设置中修改。</p><div className="profile-grid"><label className="profile-name-field">你的名字<input value={values.display_name} onChange={(event) => { setValues({ ...values, display_name: event.target.value }); setError(""); }} placeholder="例如：小王" maxLength={40} autoComplete="name" /></label><label>我的工作<textarea value={values["我的工作"]} onChange={(event) => { setValues({ ...values, "我的工作": event.target.value }); setError(""); }} placeholder="例如：我负责……" /></label><label>当前目标<textarea value={values["当前目标"]} onChange={(event) => { setValues({ ...values, "当前目标": event.target.value }); setError(""); }} placeholder="例如：近期重点是……" /></label></div><button className="primary" disabled={busy} onClick={submit}>{busy ? "保存中…" : "完成设置，进入工作台"} <ChevronRight size={16} /></button>{error && <div className="error-banner">{error}</div>}</div></div>;
 }

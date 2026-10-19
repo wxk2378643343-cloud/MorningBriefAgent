@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   FileText,
   FolderOpen,
@@ -12,19 +13,33 @@ import {
   Maximize2,
   Minimize2,
   Info,
-  ShieldCheck,
   CheckCircle2,
   ChevronRight,
   Sparkles,
 } from "lucide-react";
+import WindowControls from "./WindowControls";
+import { DESKTOP_SECTIONS, SETTINGS_SECTION, WORKFLOW_ACTIONS } from "./desktopNavigation";
+
+const MENU_ICONS = {
+  dashboard: [LayoutDashboard, "text-sky-500"],
+  files: [FolderOpen, "text-indigo-500"],
+  workflow: [Workflow, "text-amber-500"],
+  database: [Database, "text-emerald-500"],
+  agent: [Bot, "text-purple-500"],
+  settings: [Settings, "text-slate-600"],
+};
+
+const WORKFLOW_TONE_CLASSES = {
+  amber: "text-amber-500",
+  indigo: "text-indigo-500",
+  emerald: "text-emerald-500",
+};
 
 export default function DesktopMenuBar({
   onNavigate,
   activeSection,
   workspace,
   onQuickRun,
-  serviceState,
-  serviceLabel,
 }) {
   const [activeMenu, setActiveMenu] = useState(null); // 'file' | 'view' | 'workflow' | 'window' | null
   const [showAbout, setShowAbout] = useState(false);
@@ -59,24 +74,13 @@ export default function DesktopMenuBar({
       if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
 
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey) {
-        if (e.key === "1") {
+        const destination = DESKTOP_SECTIONS[Number(e.key) - 1]?.key;
+        if (destination) {
           e.preventDefault();
-          onNavigate && onNavigate("工作台");
-        } else if (e.key === "2") {
-          e.preventDefault();
-          onNavigate && onNavigate("文件与数据");
-        } else if (e.key === "3") {
-          e.preventDefault();
-          onNavigate && onNavigate("工作流");
-        } else if (e.key === "4") {
-          e.preventDefault();
-          onNavigate && onNavigate("数据库");
-        } else if (e.key === "5") {
-          e.preventDefault();
-          onNavigate && onNavigate("Agent 运行");
+          onNavigate?.(destination);
         } else if (e.key === ",") {
           e.preventDefault();
-          onNavigate && onNavigate("设置");
+          onNavigate?.(SETTINGS_SECTION.key);
         } else if (e.key === "r" && !e.altKey) {
           // let normal refresh happen or handle gracefully
         }
@@ -131,13 +135,32 @@ export default function DesktopMenuBar({
     }
   };
 
+  const startNativeDrag = (event) => {
+    if (
+      event.button !== 0
+      || event.target.closest("button, input, textarea, select, a, [role='menuitem']")
+      || !window.__TAURI_INTERNALS__
+    ) {
+      return;
+    }
+    getCurrentWindow().startDragging().catch(() => {});
+  };
+
   return (
     <>
-      <nav className="desktop-native-menubar" ref={menuBarRef} aria-label="应用主菜单">
+      <nav
+        className="desktop-native-menubar"
+        ref={menuBarRef}
+        aria-label="应用主菜单"
+        data-tauri-drag-region
+        onMouseDown={startNativeDrag}
+      >
         {/* Brand App Badge */}
-        <div className="menubar-brand">
+        <div className="menubar-brand" data-tauri-drag-region>
           <Sparkles size={13} className="text-amber-500" />
-          <span className="font-semibold tracking-tight text-slate-800 text-[12px]">MorningBrief</span>
+          <span className="font-semibold tracking-tight text-slate-800 text-[12px]" data-tauri-drag-region>
+            MorningBrief
+          </span>
         </div>
 
         {/* 1. 文件 (File) */}
@@ -148,7 +171,7 @@ export default function DesktopMenuBar({
             onClick={() => handleMenuClick("file")}
             onMouseEnter={() => handleMenuMouseEnter("file")}
           >
-            文件 <span>(F)</span>
+            文件
           </button>
           {activeMenu === "file" && (
             <div className="menubar-dropdown animate-in">
@@ -198,77 +221,44 @@ export default function DesktopMenuBar({
             onClick={() => handleMenuClick("view")}
             onMouseEnter={() => handleMenuMouseEnter("view")}
           >
-            视图 <span>(V)</span>
+            视图
           </button>
           {activeMenu === "view" && (
             <div className="menubar-dropdown animate-in">
-              <button
-                type="button"
-                className={`dropdown-item ${activeSection === "工作台" ? "active-page" : ""}`}
-                onClick={() => triggerAction(() => onNavigate && onNavigate("工作台"))}
-              >
-                <div className="item-label">
-                  <LayoutDashboard size={14} className="text-sky-500" />
-                  <span>工作台首页</span>
-                </div>
-                <span className="shortcut-tag">Ctrl+1</span>
-              </button>
-              <button
-                type="button"
-                className={`dropdown-item ${activeSection === "文件与数据" ? "active-page" : ""}`}
-                onClick={() => triggerAction(() => onNavigate && onNavigate("文件与数据"))}
-              >
-                <div className="item-label">
-                  <FolderOpen size={14} className="text-indigo-500" />
-                  <span>知识库与文件工作台</span>
-                </div>
-                <span className="shortcut-tag">Ctrl+2</span>
-              </button>
-              <button
-                type="button"
-                className={`dropdown-item ${activeSection === "工作流" ? "active-page" : ""}`}
-                onClick={() => triggerAction(() => onNavigate && onNavigate("工作流"))}
-              >
-                <div className="item-label">
-                  <Workflow size={14} className="text-amber-500" />
-                  <span>工作流调度中心</span>
-                </div>
-                <span className="shortcut-tag">Ctrl+3</span>
-              </button>
-              <button
-                type="button"
-                className={`dropdown-item ${activeSection === "数据库" ? "active-page" : ""}`}
-                onClick={() => triggerAction(() => onNavigate && onNavigate("数据库"))}
-              >
-                <div className="item-label">
-                  <Database size={14} className="text-emerald-500" />
-                  <span>SQLite 数据库中心</span>
-                </div>
-                <span className="shortcut-tag">Ctrl+4</span>
-              </button>
-              <button
-                type="button"
-                className={`dropdown-item ${activeSection === "Agent 运行" ? "active-page" : ""}`}
-                onClick={() => triggerAction(() => onNavigate && onNavigate("Agent 运行"))}
-              >
-                <div className="item-label">
-                  <Bot size={14} className="text-purple-500" />
-                  <span>Agent 运行时监控</span>
-                </div>
-                <span className="shortcut-tag">Ctrl+5</span>
-              </button>
+              {DESKTOP_SECTIONS.map(({ key, label, shortcut, icon }) => {
+                const [Icon, iconClass] = MENU_ICONS[icon];
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`dropdown-item ${activeSection === key ? "active-page" : ""}`}
+                    onClick={() => triggerAction(() => onNavigate?.(key))}
+                  >
+                    <div className="item-label">
+                      <Icon size={14} className={iconClass} />
+                      <span>{label}</span>
+                    </div>
+                    <span className="shortcut-tag">{shortcut}</span>
+                  </button>
+                );
+              })}
               <div className="dropdown-divider" />
-              <button
-                type="button"
-                className={`dropdown-item ${activeSection === "设置" ? "active-page" : ""}`}
-                onClick={() => triggerAction(() => onNavigate && onNavigate("设置"))}
-              >
-                <div className="item-label">
-                  <Settings size={14} className="text-slate-600" />
-                  <span>系统设置与配置中心</span>
-                </div>
-                <span className="shortcut-tag">Ctrl+,</span>
-              </button>
+              {(() => {
+                const [Icon, iconClass] = MENU_ICONS[SETTINGS_SECTION.icon];
+                return (
+                  <button
+                    type="button"
+                    className={`dropdown-item ${activeSection === SETTINGS_SECTION.key ? "active-page" : ""}`}
+                    onClick={() => triggerAction(() => onNavigate?.(SETTINGS_SECTION.key))}
+                  >
+                    <div className="item-label">
+                      <Icon size={14} className={iconClass} />
+                      <span>{SETTINGS_SECTION.label}</span>
+                    </div>
+                    <span className="shortcut-tag">{SETTINGS_SECTION.shortcut}</span>
+                  </button>
+                );
+              })()}
             </div>
           )}
         </div>
@@ -281,43 +271,25 @@ export default function DesktopMenuBar({
             onClick={() => handleMenuClick("workflow")}
             onMouseEnter={() => handleMenuMouseEnter("workflow")}
           >
-            工作流 <span>(W)</span>
+            工作流
           </button>
           {activeMenu === "workflow" && (
             <div className="menubar-dropdown animate-in">
-              <button
-                type="button"
-                className="dropdown-item"
-                onClick={() => triggerWorkflow("morning_brief", "晨间简报与指数资讯")}
-              >
-                <div className="item-label">
-                  <Zap size={14} className="text-amber-500" />
-                  <span>立即执行：晨间新闻行情简报</span>
-                </div>
-                <span className="shortcut-tag">07:45</span>
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                onClick={() => triggerWorkflow("evening_review", "夜间智能复盘与健康报告")}
-              >
-                <div className="item-label">
-                  <Zap size={14} className="text-indigo-500" />
-                  <span>立即执行：夜间智能复盘</span>
-                </div>
-                <span className="shortcut-tag">02:00</span>
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                onClick={() => triggerWorkflow("todo_sync", "待办归档与飞书多维表格同步")}
-              >
-                <div className="item-label">
-                  <CheckCircle2 size={14} className="text-emerald-500" />
-                  <span>立即执行：待办事项双向同步</span>
-                </div>
-                <span className="shortcut-tag">Sync</span>
-              </button>
+              {WORKFLOW_ACTIONS.map(({ key, name, label, tone }) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="dropdown-item"
+                  onClick={() => triggerWorkflow(key, name)}
+                >
+                  <div className="item-label">
+                    {key === "todo_sync"
+                      ? <CheckCircle2 size={14} className={WORKFLOW_TONE_CLASSES[tone]} />
+                      : <Zap size={14} className={WORKFLOW_TONE_CLASSES[tone]} />}
+                    <span>{label}</span>
+                  </div>
+                </button>
+              ))}
               <div className="dropdown-divider" />
               <button
                 type="button"
@@ -342,7 +314,7 @@ export default function DesktopMenuBar({
             onClick={() => handleMenuClick("window")}
             onMouseEnter={() => handleMenuMouseEnter("window")}
           >
-            窗口 <span>(W)</span>
+            窗口
           </button>
           {activeMenu === "window" && (
             <div className="menubar-dropdown animate-in">
@@ -357,15 +329,6 @@ export default function DesktopMenuBar({
                 </div>
                 <span className="shortcut-tag">F11</span>
               </button>
-              <div className="dropdown-divider" />
-              <div className="dropdown-info-row">
-                <ShieldCheck size={14} className="text-emerald-600" />
-                <span>后端核心: {serviceState === "ready" ? "8765 活跃" : "未连接"}</span>
-              </div>
-              <div className="dropdown-info-row">
-                <Bot size={14} className="text-indigo-600" />
-                <span>飞书守护: pythonw 进程监听中</span>
-              </div>
               <div className="dropdown-divider" />
               <button
                 type="button"
@@ -385,10 +348,7 @@ export default function DesktopMenuBar({
         {/* Window Drag Zone & Right Meta */}
         <div className="menubar-drag-zone" data-tauri-drag-region />
 
-        <div className="menubar-right-meta">
-          <span className="menubar-live-dot" />
-          <span className="text-[11px] text-slate-500 font-medium">{serviceState === "ready" ? "8765 核心已连接" : "本地核心就绪"}</span>
-        </div>
+        <WindowControls />
       </nav>
 
       {/* About Modal */}
@@ -414,10 +374,6 @@ export default function DesktopMenuBar({
               <div className="about-meta-row">
                 <span>挂载知识库</span>
                 <strong className="truncate max-w-[200px]">{workspace?.name || "wxk2378643343-cloud"}</strong>
-              </div>
-              <div className="about-meta-row">
-                <span>安全与网络</span>
-                <span className="status-badge-inline">100% 局域网离线私有</span>
               </div>
             </div>
             <div className="about-modal-footer">
