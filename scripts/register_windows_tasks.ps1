@@ -17,6 +17,25 @@ $settings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -StartWhenAvailable
 
+function Remove-LegacyBotStartup {
+    $startupDirectory = [Environment]::GetFolderPath([Environment+SpecialFolder]::Startup)
+    $legacyShortcut = Join-Path $startupDirectory "FeishuBidirectionalBot.lnk"
+    if (Test-Path -LiteralPath $legacyShortcut -PathType Leaf) {
+        Remove-Item -LiteralPath $legacyShortcut -Force
+    }
+
+    $runKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    $legacyRunValue = Get-ItemProperty `
+        -LiteralPath $runKey `
+        -Name "FeishuBidirectionalBot" `
+        -ErrorAction SilentlyContinue
+    if ($null -ne $legacyRunValue) {
+        Remove-ItemProperty `
+            -LiteralPath $runKey `
+            -Name "FeishuBidirectionalBot"
+    }
+}
+
 function Register-DailyWorkflow {
     param(
         [Parameter(Mandatory = $true)]
@@ -93,6 +112,7 @@ function Register-ReconcileWorkflow {
     Register-ScheduledTask -TaskName "MorningBriefAgentReconcile" -InputObject $task -Force | Out-Null
 }
 
+Remove-LegacyBotStartup
 Register-DailyWorkflow -Name "DailyTodoMorningPush" -Arguments "main.py todo-morning" -At "06:00"
 Register-DailyWorkflow -Name "KaoyanMorningBrief" -Arguments "main.py brief" -At "06:30"
 Register-DailyWorkflow -Name "MorningChatDigest" -Arguments "main.py chat" -At "07:00"
