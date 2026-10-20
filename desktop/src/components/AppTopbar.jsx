@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import {
   Search,
   FolderOpen,
-  Bot,
   Zap,
   Command,
   ChevronRight,
@@ -13,8 +12,6 @@ export default function AppTopbar({
   title,
   activeSection,
   onNavigate,
-  serviceState,
-  serviceLabel,
   workspace,
   onQuickRun,
 }) {
@@ -22,8 +19,6 @@ export default function AppTopbar({
   const [searchQuery, setSearchQuery] = useState("");
 
   const workspaceName = workspace?.name || "本地知识库 (wxk2378643343-cloud)";
-  const isReady = serviceState === "ready";
-
   const handleSearchSubmit = (e) => {
     if (e.key === "Enter" && searchQuery.trim()) {
       if (onNavigate) {
@@ -79,21 +74,6 @@ export default function AppTopbar({
 
       {/* Right: Desktop Controls & Live Service Indicators (No settings button) */}
       <div className="topbar-right-zone">
-        {/* Local Core Service Latency Pill */}
-        <div className={`service-status-pill ${isReady ? "ready" : "offline"}`} title={serviceLabel}>
-          <span className="pulse" />
-          <span className="pill-text">{isReady ? "核心 8765 活跃" : "服务断开"}</span>
-        </div>
-
-        {/* Feishu Bot Daemon Pill */}
-        <div
-          className="bot-daemon-pill"
-          title="飞书长连接机器人后台守护服务 (pythonw 进程运行中，零弹窗)"
-        >
-          <Bot size={13} className="text-emerald-600" />
-          <span>飞书守护就绪</span>
-        </div>
-
         {/* Quick Run Workflow Button */}
         <button
           type="button"

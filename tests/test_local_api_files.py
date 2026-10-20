@@ -19,20 +19,23 @@ class LocalFileApiTests(unittest.TestCase):
         with patch(
             "core.application.local_api.reconcile_pending_file_operations"
         ) as reconcile:
-            server = create_local_server()
-        reconcile.assert_called_once_with(database_path=None)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        try:
-            payload = self._get(
-                f"http://127.0.0.1:{server.server_port}/api/v1/health"
-            )
-            self.assertEqual(payload["status"], "ok")
-            self.assertEqual(payload["service"], "morningbrief-local-api")
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=2)
+            server = create_local_server(owner_token="desktop-test-owner")
+            reconcile.assert_called_once_with(database_path=None)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            try:
+                payload = self._get(
+                    f"http://127.0.0.1:{server.server_port}/api/v1/health"
+                )
+                self.assertEqual(payload["status"], "ok")
+                self.assertEqual(
+                    payload["service"], "morningbrief-local-api"
+                )
+                self.assertEqual(payload["owner_token"], "desktop-test-owner")
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
 
     def test_sources_and_files_are_readable_as_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:

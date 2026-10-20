@@ -303,12 +303,9 @@ export default function DatabasePage() {
             <HardDrive size={20} />
           </div>
           <div className="db-bento-info">
-            <span className="db-bento-label">存储引擎健康度</span>
-            <strong className="db-bento-value text-emerald-600 flex items-center gap-2">
-              <span className="pulse" />
-              SQLite 活跃运行中
-            </strong>
-            <small className="db-bento-desc">WAL 模式已开启 · 零外网泄露</small>
+            <span className="db-bento-label">存储引擎</span>
+            <strong className="db-bento-value">SQLite</strong>
+            <small className="db-bento-desc">数据来自当前本地数据库</small>
           </div>
         </div>
       </div>

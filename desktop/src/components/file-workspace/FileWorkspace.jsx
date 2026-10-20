@@ -50,12 +50,12 @@ export default function FileWorkspace({ serviceState }) {
         (item) => item.id === sources.active_source_id,
       ) ?? sources.sources?.[0];
       if (!nextSource) throw new Error("no_source");
-      const [payload, recoveryPayload] = await Promise.all([
-        fetchJson(
-          `/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}&sort=recent`,
-        ),
-        fetchJson(`/api/v1/file-recoveries?source_id=${encodeURIComponent(nextSource.id)}`),
-      ]);
+      const payload = await fetchJson(
+        `/api/v1/files?source_id=${encodeURIComponent(nextSource.id)}&sort=recent`,
+      );
+      const recoveryPayload = await fetchJson(
+        `/api/v1/file-recoveries?source_id=${encodeURIComponent(nextSource.id)}`,
+      ).catch(() => ({ recoveries: [] }));
       const nextFiles = (payload.files ?? []).map(normalizeWorkspaceFile);
       setSource(nextSource);
       setFiles(nextFiles);

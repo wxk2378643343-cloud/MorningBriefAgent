@@ -48,8 +48,24 @@ class DesktopWorkspaceTests(unittest.TestCase):
                     )
                     self.assertTrue(response["configured"])
                     set_secret.assert_called_once()
-                self._post(base + "/api/v1/profile", {"我的工作": "软件开发"})
-                self.assertTrue((root / "vault" / "个人上下文.md").is_file())
+                saved = self._post(
+                    base + "/api/v1/profile",
+                    {"display_name": "小王", "我的工作": "软件开发"},
+                )
+                profile_path = root / "vault" / "个人上下文.md"
+                self.assertTrue(profile_path.is_file())
+                original_context = profile_path.read_text(encoding="utf-8")
+                self.assertEqual(saved["display_name"], "小王")
+                self.assertEqual(self._get(base + "/api/v1/profile")["display_name"], "小王")
+                renamed = self._post(
+                    base + "/api/v1/profile",
+                    {"display_name": "小李"},
+                )
+                self.assertEqual(renamed["display_name"], "小李")
+                self.assertEqual(
+                    profile_path.read_text(encoding="utf-8"),
+                    original_context,
+                )
             finally:
                 server.shutdown()
                 server.server_close()

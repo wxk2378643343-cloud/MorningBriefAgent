@@ -101,15 +101,45 @@ def save_personal_context(
     info = workspace_info(database_path)
     if not info["configured"]:
         raise ValueError("workspace_not_configured")
+    display_name = str(values.get("display_name", "")).strip()
+    if len(display_name) > 40:
+        raise ValueError("display_name_too_long")
     target = Path(str(info["vault_path"])) / "个人上下文.md"
-    content = "# 个人上下文\n\n"
-    for key, value in values.items():
-        if str(value).strip():
-            content += f"## {key}\n\n{str(value).strip()}\n\n"
-    target.write_text(content, encoding="utf-8")
+    context_values = {
+        key: str(value).strip()
+        for key, value in values.items()
+        if key != "display_name" and str(value).strip()
+    }
+    if context_values:
+        content = "# 个人上下文\n\n"
+        for key, value in context_values.items():
+            content += f"## {key}\n\n{value}\n\n"
+        target.write_text(content, encoding="utf-8")
     with connect(database_path) as connection:
-        _set_setting(connection, "profile_path", str(target))
-    return {"path": str(target), "updated": target.stat().st_mtime}
+        if target.is_file():
+            _set_setting(connection, "profile_path", str(target))
+        if display_name:
+            _set_setting(connection, "user_display_name", display_name)
+    return {
+        "path": str(target) if target.is_file() else None,
+        "updated": target.stat().st_mtime if target.is_file() else None,
+        "display_name": display_name or user_profile(database_path)["display_name"],
+    }
+
+
+def user_profile(database_path: str | Path | None = None) -> dict[str, str]:
+    initialize(database_path)
+    with connect(database_path) as connection:
+        row = connection.execute(
+            "SELECT value FROM local_settings WHERE key = 'user_display_name'"
+        ).fetchone()
+    if row is None:
+        return {"display_name": ""}
+    try:
+        value = json.loads(str(row["value"]))
+    except json.JSONDecodeError:
+        value = ""
+    return {"display_name": str(value).strip()}
 
 
 def _set_setting(connection, key: str, value: str) -> None:

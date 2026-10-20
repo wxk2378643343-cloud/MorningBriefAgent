@@ -1,9 +1,12 @@
 import React, { useState } from "react";
 import { ChevronRight, Sparkles } from "lucide-react";
+import { fetchJson } from "../localApi";
 import { ONBOARDING_STEPS } from "./onboarding/OnboardingScreen";
 
-export default function SettingsPage({ status, onOpenSetup, onReconfigure }) {
+export default function SettingsPage({ profile, status, onOpenSetup, onProfileUpdated, onReconfigure }) {
   const [selectedKey, setSelectedKey] = useState("workspace");
+  const [displayName, setDisplayName] = useState(profile?.display_name ?? "");
+  const [profileMessage, setProfileMessage] = useState("");
   const selectedStep = ONBOARDING_STEPS.find((step) => step.key === selectedKey) ?? ONBOARDING_STEPS[0];
   const SelectedIcon = selectedStep.icon;
   const selectedState = status?.steps?.find((item) => item.step_key === selectedStep.key)?.status ?? "pending";
@@ -17,6 +20,25 @@ export default function SettingsPage({ status, onOpenSetup, onReconfigure }) {
   };
   const completed = status?.completed_count ?? 0;
   const skipped = status?.skipped_count ?? 0;
+  const saveDisplayName = async () => {
+    const normalizedName = displayName.trim();
+    if (!normalizedName) {
+      setProfileMessage("名字不能为空。");
+      return;
+    }
+    try {
+      const nextProfile = await fetchJson("/api/v1/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: normalizedName }),
+      });
+      onProfileUpdated?.(nextProfile);
+      setDisplayName(nextProfile.display_name);
+      setProfileMessage("名字已保存。");
+    } catch {
+      setProfileMessage("名字保存失败。");
+    }
+  };
 
   return (
     <section className="settings-page mx-auto max-w-[1120px] !pt-2">
@@ -75,6 +97,27 @@ export default function SettingsPage({ status, onOpenSetup, onReconfigure }) {
             </div>
           </div>
           <div className="settings-detail-body !gap-6 !px-9 !py-8">
+            {selectedKey === "profile" && (
+              <div className="settings-state-row !rounded-2xl !border-black/[.08] !bg-white !p-5">
+                <label className="settings-profile-name">
+                  <strong>你的名字</strong>
+                  <span>首页问候会使用这个名字。</span>
+                  <input
+                    value={displayName}
+                    maxLength={40}
+                    autoComplete="name"
+                    onChange={(event) => {
+                      setDisplayName(event.target.value);
+                      setProfileMessage("");
+                    }}
+                  />
+                </label>
+                <button className="primary !rounded-full !bg-black !px-5 !py-3" type="button" onClick={saveDisplayName}>
+                  保存名字
+                </button>
+                {profileMessage && <small className="settings-profile-message">{profileMessage}</small>}
+              </div>
+            )}
             <div className="settings-state-row settings-state-row-hover !rounded-2xl !border-black/[.08] !bg-[#fafafa] !p-5">
               <div>
                 <strong className="!text-[14px]">
