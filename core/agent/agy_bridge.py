@@ -33,7 +33,12 @@ BRAIN_DIR = config.AGY_BRAIN_DIR
 import re
 
 _BACKGROUND_TASK_ID_RE = re.compile(
+    r"(?:task\s+id:\s*|sender=|task\s+id\s+[\"'])"
     r"(?P<task_id>[a-zA-Z0-9-]+/task-\d+)",
+    re.IGNORECASE,
+)
+_NON_BLOCKING_TIMER_TASK_RE = re.compile(
+    r"task\s+description:\s*timer:",
     re.IGNORECASE,
 )
 
@@ -102,7 +107,9 @@ def read_transcript_snapshot(
                     for match in _BACKGROUND_TASK_ID_RE.finditer(content_text)
                 }
 
-                if status == "RUNNING":
+                if status == "RUNNING" and not _NON_BLOCKING_TIMER_TASK_RE.search(
+                    content_text
+                ):
                     active_task_ids.update(task_ids)
                 if "finished with result" in content_text.lower():
                     active_task_ids.difference_update(task_ids)

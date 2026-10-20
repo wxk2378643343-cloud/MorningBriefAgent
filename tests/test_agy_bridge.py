@@ -183,6 +183,63 @@ class AgyBridgeCompletionTests(unittest.TestCase):
 
         self.assertEqual(snapshot.active_task_ids, (second,))
 
+    def test_timer_helper_and_task_log_path_do_not_block_final_answer(self):
+        task_id = "conversation-id/task-2801"
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = TranscriptFile(tmp)
+            transcript.write(
+                row(
+                    2801,
+                    "GENERIC",
+                    status="RUNNING",
+                    content=(
+                        f"Tool is running as a background task with task id: {task_id}\n"
+                        "Task Description: Timer: 12s, Prompt: Wait for task completion\n"
+                        "Task logs are available at: "
+                        "file:///brain/conversation-id/.system_generated/tasks/task-2801.log"
+                    ),
+                ),
+                row(
+                    2897,
+                    "PLANNER_RESPONSE",
+                    content="所有任务已经完成，这是最终答复。",
+                ),
+            )
+
+            snapshot = agy_bridge.read_transcript_snapshot(
+                str(transcript.path),
+                min_step=2788,
+            )
+            answer, step = agy_bridge.get_latest_response_from_transcript(
+                str(transcript.path),
+                min_step=2788,
+            )
+
+        self.assertEqual(snapshot.active_task_ids, ())
+        self.assertEqual(answer, "所有任务已经完成，这是最终答复。")
+        self.assertEqual(step, 2897)
+
+    def test_task_log_path_is_not_mistaken_for_a_second_task(self):
+        task_id = "conversation-id/task-90"
+        with tempfile.TemporaryDirectory() as tmp:
+            transcript = TranscriptFile(tmp)
+            transcript.write(
+                row(
+                    90,
+                    "GENERIC",
+                    status="RUNNING",
+                    content=(
+                        f"background task id: {task_id}\n"
+                        "Task Description: Verify output\n"
+                        "Task logs: file:///brain/.system_generated/tasks/task-90.log"
+                    ),
+                ),
+            )
+
+            snapshot = agy_bridge.read_transcript_snapshot(str(transcript.path))
+
+        self.assertEqual(snapshot.active_task_ids, (task_id,))
+
     def test_partial_trailing_jsonl_row_is_ignored_safely(self):
         with tempfile.TemporaryDirectory() as tmp:
             transcript = TranscriptFile(tmp)
