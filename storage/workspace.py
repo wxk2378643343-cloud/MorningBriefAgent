@@ -3,19 +3,27 @@
 from __future__ import annotations
 
 import json
+import os
+import sqlite3
 from pathlib import Path
 from typing import Any
 
+from core.runtime import config
 from storage.sqlite import connect, initialize
+
+
+class WorkspaceDatabaseUnavailableError(RuntimeError):
+    """Raised when the configured workspace database file is missing or unreadable."""
+
+
+class MetadataDatabaseUnavailableError(RuntimeError):
+    """Raised when the metadata database itself cannot be accessed."""
 
 WORKSPACE_DIRECTORIES = (
     "data",
-    "vault",
-    "logs",
     "attachments",
-    "conversations",
     "exports",
-    "config",
+    "logs",
 )
 
 OBSIDIAN_LAYOUT = {
@@ -45,14 +53,7 @@ def initialize_workspace(root_path: str | Path, *, database_path: str | Path | N
         raise NotADirectoryError(str(root))
     for directory in WORKSPACE_DIRECTORIES:
         (root / directory).mkdir(parents=True, exist_ok=True)
-    vault = root / "vault"
     created_files: list[str] = []
-    for relative_path, content in OBSIDIAN_LAYOUT.items():
-        target = vault / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if not target.exists():
-            target.write_text(content, encoding="utf-8")
-            created_files.append(str(target))
     database = root / "data" / "app.sqlite3"
     initialize(database)
     metadata_database = Path(database_path) if database_path else database
@@ -88,7 +89,7 @@ def workspace_info(database_path: str | Path | None = None) -> dict[str, Any]:
         "root_path": str(root) if root else None,
         "default_root_path": str(default_workspace_root()),
         "database_path": str(root / "data" / "app.sqlite3") if root else str(database),
-        "vault_path": str(root / "vault") if root else None,
+        "vault_path": str(root / "vault") if root and (root / "vault").is_dir() else None,
         "directories": [str(root / item) for item in WORKSPACE_DIRECTORIES] if root else [],
     }
 
@@ -104,12 +105,15 @@ def save_personal_context(
     display_name = str(values.get("display_name", "")).strip()
     if len(display_name) > 40:
         raise ValueError("display_name_too_long")
-    target = Path(str(info["vault_path"])) / "个人上下文.md"
     context_values = {
         key: str(value).strip()
         for key, value in values.items()
         if key != "display_name" and str(value).strip()
     }
+    vault = Path(str(info["root_path"])) / "vault"
+    if context_values:
+        vault.mkdir(parents=True, exist_ok=True)
+    target = vault / "个人上下文.md"
     if context_values:
         content = "# 个人上下文\n\n"
         for key, value in context_values.items():
@@ -152,3 +156,86 @@ def _set_setting(connection, key: str, value: str) -> None:
         """,
         (key, json.dumps(value, ensure_ascii=False)),
     )
+
+
+def active_database_path(metadata_database_path: str | Path | None = None) -> Path:
+    """Resolve the active database path based on configuration and read-only probe.
+
+    Semantics:
+    1. If metadata_database_path is omitted, fallback to config.METADATA_DATABASE_PATH or config.SQLITE_DATABASE_PATH.
+    2. Read workspace_info from metadata database. If metadata DB fails, raise MetadataDatabaseUnavailableError.
+    3. If workspace is not configured, return the resolved metadata database path.
+    4. If workspace is configured:
+       - Probe the workspace database path with a strictly read-only connection (mode=ro) executing SELECT 1.
+       - Never create or initialize the database during the probe.
+       - If probe succeeds, return the Path object.
+       - If missing, damaged, locked or inaccessible, raise WorkspaceDatabaseUnavailableError.
+    """
+    explicit_path_provided = bool(metadata_database_path or os.getenv("MORNINGBRIEF_METADATA_DATABASE_PATH"))
+    if metadata_database_path:
+        meta_path = Path(metadata_database_path).resolve()
+    elif os.getenv("MORNINGBRIEF_METADATA_DATABASE_PATH"):
+        meta_path = Path(os.environ["MORNINGBRIEF_METADATA_DATABASE_PATH"]).resolve()
+    else:
+        meta_path = Path(config.SQLITE_DATABASE_PATH).resolve()
+
+    # If an explicit metadata database path was specified, it MUST exist and be readable.
+    # Never call initialize() which silently creates a new empty database!
+    if explicit_path_provided:
+        if not meta_path.is_file():
+            raise MetadataDatabaseUnavailableError(f"Explicit metadata database file does not exist: {meta_path}")
+        uri = f"file:{meta_path.as_posix()}?mode=ro"
+        try:
+            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+            try:
+                conn.execute("PRAGMA schema_version").fetchone()
+            finally:
+                conn.close()
+        except Exception as exc:
+            raise MetadataDatabaseUnavailableError(f"Explicit metadata database probe failed at {meta_path}: {exc}") from exc
+
+    try:
+        with connect(meta_path) as connection:
+            # Check if installation_state table exists before querying
+            table_check = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='installation_state'"
+            ).fetchone()
+            if table_check is None:
+                # Fresh or uninitialized SQLite DB without installation_state -> treated as unconfigured workspace
+                return meta_path
+            row = connection.execute(
+                "SELECT workspace_root FROM installation_state WHERE id = 1"
+            ).fetchone()
+        root = Path(str(row["workspace_root"])).resolve() if row and row["workspace_root"] else None
+        info = {
+            "configured": bool(root and root.is_dir()),
+            "root_path": str(root) if root else None,
+            "database_path": str(root / "data" / "app.sqlite3") if root else str(meta_path),
+        }
+    except Exception as exc:
+        raise MetadataDatabaseUnavailableError(f"Failed to read metadata database {meta_path}: {exc}") from exc
+
+    if not info.get("configured"):
+        return meta_path
+
+    target_str = info.get("database_path")
+    if not target_str:
+        raise WorkspaceDatabaseUnavailableError("Configured workspace missing database path")
+
+    target_path = Path(target_str).resolve()
+    if not target_path.is_file():
+        raise WorkspaceDatabaseUnavailableError(f"Workspace database file does not exist: {target_path}")
+
+    # Read-only probe: SELECT 1
+    # Use URI file:{path}?mode=ro to prevent auto-creating a new file or executing DDL
+    uri = f"file:{target_path.as_posix()}?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+        try:
+            conn.execute("PRAGMA schema_version").fetchone()
+        finally:
+            conn.close()
+    except Exception as exc:
+        raise WorkspaceDatabaseUnavailableError(f"Workspace database probe failed at {target_path}: {exc}") from exc
+
+    return target_path

@@ -120,8 +120,18 @@ def load_staged_plan() -> Dict[str, Any]:
     return plan_generation.load_staged_plan(STAGED_PLAN_FILE)
 
 
-def save_staged_plan(data: Dict[str, Any]) -> None:
-    plan_generation.save_staged_plan(data, STAGED_PLAN_FILE)
+def save_staged_plan(
+    data: Dict[str, Any],
+    *,
+    metadata_database_path: Optional[str] = None,
+    database_path: Optional[str] = None,
+) -> None:
+    plan_generation.save_staged_plan(
+        data,
+        STAGED_PLAN_FILE,
+        metadata_database_path=metadata_database_path or config.METADATA_DATABASE_PATH,
+        database_path=database_path,
+    )
 
 def extract_candidates_from_chat() -> List[str]:
     return todo_candidates.extract_candidates(

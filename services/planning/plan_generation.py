@@ -13,6 +13,7 @@ from core.agent import provider as agent_provider
 from core.agent.contracts import AgentPlan
 from core.runtime import config
 from storage.planning import persist_plan
+from storage.workspace import active_database_path
 from services.knowledge import project_plan
 
 
@@ -77,22 +78,31 @@ def load_staged_plan(path: os.PathLike[str] | str | None = None) -> Dict[str, An
 def save_staged_plan(
     data: Dict[str, Any],
     path: os.PathLike[str] | str | None = None,
+    *,
+    metadata_database_path: os.PathLike[str] | str | None = None,
+    database_path: os.PathLike[str] | str | None = None,
 ) -> None:
     target = Path(path or config.STAGED_PLAN_PATH or DEFAULT_STAGED_PLAN_FILE)
-    try:
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    # 1. Resolve active database and persist facts.
+    # Must NOT swallow WorkspaceDatabaseUnavailableError or persistence failures!
+    target_db = (
+        Path(database_path).resolve()
+        if database_path
+        else active_database_path(metadata_database_path)
+    )
+    persist_plan(data, database_path=target_db)
+
+    # 2. Markdown projection is non-blocking and isolated
+    if path is None:
         try:
-            persist_plan(data)
-            if path is None:
-                project_plan(data)
+            project_plan(data)
         except Exception as exc:
-            print(f"⚠️ 同步计划到 SQLite 异常: {exc}")
-    except OSError as exc:
-        print(f"Error saving staged plan: {exc}")
+            print(f"⚠️ Markdown 计划投影异常 (允许降级): {exc}")
 
 
 __all__ = [

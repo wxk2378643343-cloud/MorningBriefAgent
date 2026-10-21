@@ -14,19 +14,20 @@ from storage.usage import record_usage
 
 
 class DesktopWorkspaceTests(unittest.TestCase):
-    def test_workspace_initialization_creates_local_layout(self):
+    def test_workspace_initialization_creates_minimal_local_layout(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "server.sqlite3"
             root = Path(temp_dir) / "workspace"
             info = initialize_workspace(root, database_path=database)
             self.assertTrue(info["configured"])
             self.assertEqual(info["default_root_path"], str(default_workspace_root()))
-            self.assertEqual(len(info["created_files"]), len(OBSIDIAN_LAYOUT))
+            self.assertEqual(info["created_files"], [])
             for directory in WORKSPACE_DIRECTORIES:
                 self.assertTrue((root / directory).is_dir())
             self.assertTrue((root / "data" / "app.sqlite3").is_file())
-            for relative_path in OBSIDIAN_LAYOUT:
-                self.assertTrue((root / "vault" / relative_path).is_file())
+            self.assertFalse((root / "vault").exists())
+            self.assertFalse((root / "conversations").exists())
+            self.assertFalse((root / "config").exists())
             second = initialize_workspace(root, database_path=database)
             self.assertEqual(second["created_files"], [])
 
@@ -163,7 +164,7 @@ class DesktopWorkspaceTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
-    def test_workspace_source_is_selected_instead_of_project_demo(self):
+    def test_workspace_initialization_does_not_register_an_empty_markdown_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "server.sqlite3"
             root = Path(temp_dir) / "workspace"
@@ -177,12 +178,10 @@ class DesktopWorkspaceTests(unittest.TestCase):
                     {"root_path": str(root)},
                 )
                 payload = self._get(base + "/api/v1/data-sources")
-                self.assertEqual(payload["active_source_id"], initialized["source_id"])
-                self.assertEqual(len(payload["sources"]), 1)
-                self.assertEqual(
-                    Path(payload["sources"][0]["root_path"]),
-                    root / "vault",
-                )
+                self.assertIsNone(initialized["source_id"])
+                self.assertEqual(initialized["indexed_files"], 0)
+                self.assertIsNone(payload["active_source_id"])
+                self.assertEqual(payload["sources"], [])
             finally:
                 server.shutdown()
                 server.server_close()

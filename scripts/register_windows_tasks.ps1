@@ -36,6 +36,18 @@ function Remove-LegacyBotStartup {
     }
 }
 
+function Unregister-DeprecatedTasks {
+    $deprecated = @(
+        "KaoyanMorningBrief",
+        "MorningChatDigest",
+        "MorningGlobalNews",
+        "FundDailyAdvisor1400"
+    )
+    foreach ($taskName in $deprecated) {
+        Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
+    }
+}
+
 function Register-DailyWorkflow {
     param(
         [Parameter(Mandatory = $true)]
@@ -113,23 +125,16 @@ function Register-ReconcileWorkflow {
 }
 
 Remove-LegacyBotStartup
+Unregister-DeprecatedTasks
 Register-DailyWorkflow -Name "DailyTodoMorningPush" -Arguments "main.py todo-morning" -At "06:00"
-Register-DailyWorkflow -Name "KaoyanMorningBrief" -Arguments "main.py brief" -At "06:30"
-Register-DailyWorkflow -Name "MorningChatDigest" -Arguments "main.py chat" -At "07:00"
-Register-DailyWorkflow -Name "MorningGlobalNews" -Arguments "main.py news" -At "07:45"
-Register-DailyWorkflow -Name "FundDailyAdvisor1400" -Arguments "main.py fund" -At "14:00"
 Register-DailyWorkflow -Name "DailyTodoEveningReview" -Arguments "main.py todo-evening" -At "23:00"
 Register-LogonWorkflow -Name "MorningBriefAgentBot" -Arguments "-m server.feishu_bot_server"
 Register-ReconcileWorkflow
 
-Write-Host "Registered MorningBriefAgent Windows tasks from $projectRoot"
+Write-Host "Registered core MorningBriefAgent Windows tasks from $projectRoot"
 Get-ScheduledTask |
     Where-Object { $_.TaskName -in @(
         "DailyTodoMorningPush",
-        "KaoyanMorningBrief",
-        "MorningChatDigest",
-        "MorningGlobalNews",
-        "FundDailyAdvisor1400",
         "DailyTodoEveningReview",
         "MorningBriefAgentBot",
         "MorningBriefAgentReconcile"

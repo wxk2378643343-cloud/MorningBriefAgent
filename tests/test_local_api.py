@@ -60,7 +60,7 @@ class LocalApplicationApiTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
-    def test_workspace_completion_does_not_bypass_legacy_skipped_steps(self):
+    def test_workspace_completion_with_skipped_optional_steps_allows_entry(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database = Path(temp_dir) / "app.sqlite3"
             initialize(database)
@@ -79,8 +79,8 @@ class LocalApplicationApiTests(unittest.TestCase):
                     f"{base}/api/v1/onboarding/complete",
                     {"step_key": "workspace", "detail": "local workspace initialized"},
                 )
-                self.assertFalse(status["complete"])
-                self.assertEqual(status["current_step"], "provider")
+                self.assertTrue(status["complete"])
+                self.assertIsNone(status["current_step"])
             finally:
                 server.shutdown()
                 server.server_close()
