@@ -3,11 +3,11 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from core.application.local_api import create_local_server
 from storage.sqlite import initialize
-from storage.planning import save_todo, save_schedule
 
 
 class TodoScheduleApiTests(unittest.TestCase):
@@ -49,18 +49,37 @@ class TodoScheduleApiTests(unittest.TestCase):
                 self.assertEqual(list_res["todos"][0]["title"], "测试待办1")
                 self.assertEqual(list_res["todos"][0]["status"], "open")
 
-                # 3. Update status
+                # 3. Reject invalid status (e.g. banana)
+                with self.assertRaises(HTTPError) as ctx:
+                    self._post(f"{base}/api/v1/todos/{todo_id}/status", {"status": "banana"})
+                self.assertEqual(ctx.exception.code, 400)
+
+                # 4. Update status to completed, cancelled, postponed
                 status_res = self._post(f"{base}/api/v1/todos/{todo_id}/status", {
                     "status": "completed"
                 })
                 self.assertTrue(status_res["ok"])
 
-                # 4. Verify completed
+                # 5. Check completed
                 list_res2 = self._get(f"{base}/api/v1/todos?status=completed")
                 self.assertEqual(len(list_res2["todos"]), 1)
                 self.assertIsNotNone(list_res2["todos"][0]["completed_at"])
 
-                # 5. Create schedule
+                # 6. Postpone todo
+                postpone_res = self._post(f"{base}/api/v1/todos/{todo_id}/status", {
+                    "status": "postponed"
+                })
+                self.assertTrue(postpone_res["ok"])
+
+                # 7. Check audit logs
+                audit_res = self._get(f"{base}/api/v1/audit-logs?entity_type=todo")
+                self.assertGreaterEqual(len(audit_res["logs"]), 3)
+                actions = [item["action"] for item in audit_res["logs"]]
+                self.assertIn("create", actions)
+                self.assertIn("status_change_to_completed", actions)
+                self.assertIn("status_change_to_postponed", actions)
+
+                # 8. Create schedule
                 sched_res = self._post(f"{base}/api/v1/schedules", {
                     "title": "评审会议",
                     "start_at": "2026-10-22T14:00:00",
@@ -68,7 +87,7 @@ class TodoScheduleApiTests(unittest.TestCase):
                 })
                 self.assertTrue(sched_res["ok"])
 
-                # 6. List schedules
+                # 9. List schedules
                 sched_list = self._get(f"{base}/api/v1/schedules")
                 self.assertEqual(len(sched_list["schedules"]), 1)
                 self.assertEqual(sched_list["schedules"][0]["title"], "评审会议")

@@ -41,7 +41,7 @@ from services.knowledge.file_recovery import (
     reconcile_pending_file_operations,
     restore_file,
 )
-from storage.planning import list_all_todos, list_schedules, save_todo, save_schedule, update_todo_status
+from storage.planning import list_all_todos, list_audit_logs, list_schedules, save_todo, save_schedule, update_todo_status, TODO_VALID_STATUSES
 from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, reset_all
 from storage.workspace import (
     default_workspace_root,
@@ -110,9 +110,15 @@ class _Handler(BaseHTTPRequestHandler):
                         )
                     }
                 )
+        elif self.path.startswith("/api/v1/audit-logs"):
+            entity_type = self._query_value("entity_type")
+            limit_val = self._query_value("limit")
+            limit = int(limit_val) if limit_val and limit_val.isdigit() else 50
+            self._send_json({"logs": list_audit_logs(entity_type=entity_type, limit=limit, database_path=self.server.database_path)})
         elif self.path.startswith("/api/v1/todos"):
             status_param = self._query_value("status")
-            self._send_json({"todos": list_all_todos(status=status_param, database_path=self.server.database_path)})
+            due_date_param = self._query_value("due_date")
+            self._send_json({"todos": list_all_todos(status=status_param, due_date=due_date_param, database_path=self.server.database_path)})
         elif self.path.startswith("/api/v1/schedules"):
             start_param = self._query_value("start_date")
             end_param = self._query_value("end_date")
@@ -272,6 +278,9 @@ class _Handler(BaseHTTPRequestHandler):
                 todo_id = parts[4]
                 payload = self._read_json()
                 new_status = str(payload.get("status", "open")).strip()
+                if new_status not in TODO_VALID_STATUSES:
+                    self._send_json({"error": "invalid_status", "valid_statuses": list(TODO_VALID_STATUSES)}, HTTPStatus.BAD_REQUEST)
+                    return
                 ok = update_todo_status(todo_id, new_status, database_path=self.server.database_path)
                 self._send_json({"ok": ok})
             except Exception as exc:
@@ -527,6 +536,16 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json(
                 {"source_id": source_id, "indexed_files": indexed}
             )
+            return
+        if self.path == "/api/v1/onboarding/skip":
+            try:
+                payload = self._read_json()
+                step_key = str(payload.get("step_key", "")).strip()
+                from storage.onboarding import skip_step
+                skip_step(step_key, database_path=self.server.database_path)
+                self._send_json(get_status(self.server.database_path))
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
             return
         if self.path != "/api/v1/onboarding/complete":
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)

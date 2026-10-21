@@ -123,15 +123,33 @@ export default function DesktopMenuBar({
 
   const runWorkflow = async (key, name) => {
     setActiveMenu(null);
+    if (onQuickRun) {
+      onQuickRun(key, name);
+      return;
+    }
     try {
-      await fetch(`http://127.0.0.1:8765/api/v1/workflows/${key}/run`, { method: "POST" });
+      const res = await fetch(`http://127.0.0.1:8765/api/v1/workflows/${key}/run`, { method: "POST" });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
     } catch (e) {
-      console.error(e);
+      console.error(`Workflow ${key} execution failed:`, e);
     }
   };
 
+  const startNativeDrag = (event) => {
+    if (
+      event.button !== 0
+      || event.target.closest("button, input, textarea, select, a, [role='menuitem']")
+      || !window.__TAURI_INTERNALS__
+    ) {
+      return;
+    }
+    getCurrentWindow().startDragging().catch(() => {});
+  };
+
   return (
-    <div className="desktop-menubar-root" ref={menuBarRef} data-tauri-drag-region>
+    <div className="desktop-menubar-root" ref={menuBarRef} data-tauri-drag-region onMouseDown={startNativeDrag}>
       {/* Left Application Logo & Identification */}
       <div className="menubar-brand" data-tauri-drag-region>
         <span className="brand-dot" />

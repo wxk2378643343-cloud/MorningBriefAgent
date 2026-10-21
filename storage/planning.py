@@ -1,6 +1,27 @@
+from __future__ import annotations
+
+TODO_VALID_STATUSES = {"open", "completed", "cancelled", "postponed"}
+
+def _record_audit(
+    connection,
+    *,
+    entity_type: str,
+    entity_id: str,
+    action: str,
+    before_value: str | None = None,
+    after_value: str | None = None,
+    actor: str = "desktop_user",
+) -> None:
+    connection.execute(
+        """
+        INSERT INTO audit_log
+          (entity_type, entity_id, action, before_value, after_value, actor, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """,
+        (entity_type, entity_id, action, before_value, after_value, actor),
+    )
 """Repositories for synchronized todo and calendar facts."""
 
-from __future__ import annotations
 
 import hashlib
 from typing import Any
@@ -49,6 +70,13 @@ def save_todo(
             """,
             (todo_id, source_id, title, status, priority, due_date, feishu_task_id),
         )
+        _record_audit(
+            connection,
+            entity_type="todo",
+            entity_id=todo_id,
+            action="create" if status == "open" else "save",
+            after_value=title,
+        )
     return todo_id
 
 
@@ -80,6 +108,13 @@ def save_schedule(
                 event_id, source_id, title, start_at, end_at,
                 feishu_event_id, sync_status,
             ),
+        )
+        _record_audit(
+            connection,
+            entity_type="schedule",
+            entity_id=event_id,
+            action="create",
+            after_value=f"{title} ({start_at} - {end_at})",
         )
     return event_id
 
@@ -172,14 +207,20 @@ def persist_plan(
 
 
 def list_all_todos(
-    *, status: str | None = None, database_path: str | None = None
+    *, status: str | None = None, due_date: str | None = None, database_path: str | None = None
 ) -> list[dict[str, Any]]:
     initialize(database_path)
     query = "SELECT * FROM todo_records"
     params: list[Any] = []
+    clauses: list[str] = []
     if status:
-        query += " WHERE status = ?"
+        clauses.append("status = ?")
         params.append(status)
+    if due_date:
+        clauses.append("due_date = ?")
+        params.append(due_date)
+    if clauses:
+        query += " WHERE " + " AND ".join(clauses)
     query += " ORDER BY due_date IS NULL, due_date, priority, created_at DESC"
     with connect(database_path) as connection:
         return [dict(row) for row in connection.execute(query, params).fetchall()]
@@ -191,8 +232,16 @@ def update_todo_status(
     *,
     database_path: str | None = None,
 ) -> bool:
+    if status not in TODO_VALID_STATUSES:
+        raise ValueError(f"invalid_todo_status:{status}")
     initialize(database_path)
     with connect(database_path) as connection:
+        current_row = connection.execute(
+            "SELECT status, title FROM todo_records WHERE id = ?", (todo_id,)
+        ).fetchone()
+        if not current_row:
+            return False
+        old_status = current_row["status"]
         cursor = connection.execute(
             """
             UPDATE todo_records
@@ -203,7 +252,17 @@ def update_todo_status(
             """,
             (status, status, todo_id),
         )
-        return cursor.rowcount > 0
+        if cursor.rowcount > 0:
+            _record_audit(
+                connection,
+                entity_type="todo",
+                entity_id=todo_id,
+                action=f"status_change_to_{status}",
+                before_value=old_status,
+                after_value=status,
+            )
+            return True
+        return False
 
 
 def list_schedules(
@@ -222,5 +281,20 @@ def list_schedules(
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY start_at ASC"
+    with connect(database_path) as connection:
+        return [dict(row) for row in connection.execute(query, params).fetchall()]
+
+
+def list_audit_logs(
+    *, entity_type: str | None = None, limit: int = 50, database_path: str | None = None
+) -> list[dict[str, Any]]:
+    initialize(database_path)
+    query = "SELECT * FROM audit_log"
+    params: list[Any] = []
+    if entity_type:
+        query += " WHERE entity_type = ?"
+        params.append(entity_type)
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
     with connect(database_path) as connection:
         return [dict(row) for row in connection.execute(query, params).fetchall()]

@@ -13,6 +13,7 @@ import {
   Plus,
   RefreshCw,
   Settings2,
+  Trash2,
   Zap,
 } from "lucide-react";
 import "./styles.css";
@@ -30,6 +31,13 @@ import {
 } from "./components/onboarding/OnboardingScreen";
 
 const EMPTY_DISCOVERY = { providers: [], channels: [] };
+
+function getLocalDateString(d = new Date()) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -286,14 +294,18 @@ function TodayView({ displayName, onNavigate, workspace }) {
   const [submitting, setSubmitting] = useState(false);
   const [runningKey, setRunningKey] = useState("");
   const [actionNotice, setActionNotice] = useState("");
+  const [noticeTone, setNoticeTone] = useState("success");
 
-  const todayIso = new Date().toISOString().split("T")[0];
+  const todayIso = getLocalDateString();
+  const tomorrowIso = getLocalDateString(new Date(Date.now() + 86400000));
 
   const loadData = async () => {
     try {
-      const todoRes = await fetchJson("/api/v1/todos");
+      // Query today's todos (due_date = today or open tasks)
+      const todoRes = await fetchJson(`/api/v1/todos?due_date=${todayIso}`);
       setTodos(todoRes.todos || []);
-      const schedRes = await fetchJson(`/api/v1/schedules?start_date=${todayIso}`);
+      // Query schedules strictly within today [todayT00:00:00, tomorrowT00:00:00)
+      const schedRes = await fetchJson(`/api/v1/schedules?start_date=${todayIso}T00:00:00&end_date=${tomorrowIso}T00:00:00`);
       setSchedules(schedRes.schedules || []);
     } catch (e) {
       console.error(e);
@@ -309,7 +321,7 @@ function TodayView({ displayName, onNavigate, workspace }) {
     if (!newTodoTitle.trim() || submitting) return;
     setSubmitting(true);
     try {
-      await fetchJson("/api/v1/todos", {
+      const res = await fetch(apiUrl("/api/v1/todos"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -317,21 +329,26 @@ function TodayView({ displayName, onNavigate, workspace }) {
           due_date: todayIso,
         }),
       });
+      if (!res.ok) throw new Error("添加失败");
       setNewTodoTitle("");
       await loadData();
+    } catch (err) {
+      setActionNotice(err.message || "添加待办失败");
+      setNoticeTone("error");
+      setTimeout(() => setActionNotice(""), 3500);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const toggleTodo = async (todo) => {
-    const nextStatus = todo.status === "completed" ? "open" : "completed";
+  const handleUpdateTodoStatus = async (todo, nextStatus) => {
     try {
-      await fetchJson(`/api/v1/todos/${todo.id}/status`, {
+      const res = await fetch(apiUrl(`/api/v1/todos/${todo.id}/status`), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
       });
+      if (!res.ok) throw new Error("状态更新失败");
       await loadData();
     } catch (e) {
       console.error(e);
@@ -340,14 +357,20 @@ function TodayView({ displayName, onNavigate, workspace }) {
 
   const quickRun = async (key, name) => {
     setRunningKey(key);
-    setActionNotice(`正在执行 [${name}]...`);
+    setActionNotice(`正在触发 [${name}]...`);
+    setNoticeTone("info");
     try {
-      await fetch(apiUrl(`/api/v1/workflows/${key}/run`), { method: "POST" });
-      setActionNotice(`已成功启动 [${name}]`);
+      const res = await fetch(apiUrl(`/api/v1/workflows/${key}/run`), { method: "POST" });
+      if (!res.ok) {
+        throw new Error(`后端拒绝执行 (HTTP ${res.status})`);
+      }
+      setActionNotice(`已成功启动 [${name}]，全流程后台执行中`);
+      setNoticeTone("success");
       setTimeout(() => setActionNotice(""), 3500);
       await loadData();
-    } catch {
-      setActionNotice(`触发 [${name}] 失败，请检查本地后端服务`);
+    } catch (err) {
+      setActionNotice(`触发 [${name}] 失败：${err.message || "请检查本地后端服务"}`);
+      setNoticeTone("error");
       setTimeout(() => setActionNotice(""), 3500);
     } finally {
       setRunningKey("");
@@ -373,7 +396,9 @@ function TodayView({ displayName, onNavigate, workspace }) {
             <span>{todayStr}</span>
           </div>
           <h2 className="text-2xl font-bold text-slate-800">你好{salutation} 👋</h2>
-          <p className="text-sm text-slate-500 mt-1">这里是今日核心待办与日程概览。所有事实均离线保存在本地 SQLite 中。</p>
+          <p className="text-sm text-slate-500 mt-1">
+            这里是今日核心日程与待办事实。离线记录，随时复盘。
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -383,22 +408,28 @@ function TodayView({ displayName, onNavigate, workspace }) {
             disabled={Boolean(runningKey)}
           >
             <Play size={13} />
-            <span>{runningKey === "todo-morning" ? "正在执行..." : "早间计划"}</span>
+            <span>{runningKey === "todo-morning" ? "正在执行..." : "运行早间计划"}</span>
           </button>
           <button
             type="button"
             className="secondary flex items-center gap-1.5 !rounded-full !px-4 !py-2 text-sm"
-            onClick={() => quickRun("todo-evening", "晚间复盘")}
+            onClick={() => quickRun("todo-evening", "晚间复盘总结")}
             disabled={Boolean(runningKey)}
           >
             <Clock size={13} />
-            <span>{runningKey === "todo-evening" ? "正在复盘..." : "晚间复盘"}</span>
+            <span>{runningKey === "todo-evening" ? "正在复盘..." : "触发晚间复盘"}</span>
           </button>
         </div>
       </section>
 
       {actionNotice && (
-        <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-xl text-indigo-700 text-sm flex items-center gap-2">
+        <div className={`p-3 rounded-xl text-sm flex items-center gap-2 ${
+          noticeTone === "error"
+            ? "bg-red-50 border border-red-200 text-red-700"
+            : noticeTone === "info"
+            ? "bg-indigo-50 border border-indigo-200 text-indigo-700"
+            : "bg-emerald-50 border border-emerald-200 text-emerald-700"
+        }`}>
           <CheckCircle2 size={16} />
           <span>{actionNotice}</span>
         </div>
@@ -409,7 +440,7 @@ function TodayView({ displayName, onNavigate, workspace }) {
         <input
           type="text"
           className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
-          placeholder="快速添加一条要做的事，例如：下午三点交周报..."
+          placeholder="快速添加一条今日要做的事，例如：下午三点交周报..."
           value={newTodoTitle}
           onChange={(e) => setNewTodoTitle(e.target.value)}
         />
@@ -419,7 +450,7 @@ function TodayView({ displayName, onNavigate, workspace }) {
           disabled={!newTodoTitle.trim() || submitting}
         >
           <Plus size={16} />
-          <span>添加</span>
+          <span>添加待办</span>
         </button>
       </form>
 
@@ -432,7 +463,7 @@ function TodayView({ displayName, onNavigate, workspace }) {
               <CheckSquare size={16} className="text-emerald-600" />
               <strong className="text-slate-800 text-sm">今日待办</strong>
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
-                {todos.filter((t) => t.status !== "completed").length} 项待处理
+                {todos.filter((t) => t.status === "open").length} 项待处理
               </span>
             </div>
             <button
@@ -440,37 +471,65 @@ function TodayView({ displayName, onNavigate, workspace }) {
               className="text-xs text-indigo-600 hover:underline"
               onClick={() => onNavigate("待办")}
             >
-              查看全部
+              查看待办管理
             </button>
           </div>
           <div className="space-y-2 flex-1 overflow-y-auto max-h-[360px]">
             {todos.length === 0 ? (
               <div className="py-8 text-center text-slate-400 text-xs">
-                暂无待办事项，输入上方内容即可添加。
+                今日暂无计划待办，输入上方内容即可添加。
               </div>
             ) : (
               todos.map((todo) => (
                 <div
                   key={todo.id}
-                  onClick={() => toggleTodo(todo)}
-                  className={`flex items-start gap-3 p-2.5 rounded-xl transition cursor-pointer border ${
+                  className={`flex items-center justify-between p-2.5 rounded-xl border transition ${
                     todo.status === "completed"
                       ? "bg-slate-50/60 border-slate-100 text-slate-400"
+                      : todo.status === "postponed"
+                      ? "bg-amber-50/40 border-amber-100 text-amber-700"
+                      : todo.status === "cancelled"
+                      ? "bg-red-50/30 border-red-100 text-red-500 line-through"
                       : "bg-white border-slate-100 hover:border-slate-300 text-slate-700"
                   }`}
                 >
-                  <input
-                    type="checkbox"
-                    checked={todo.status === "completed"}
-                    readOnly
-                    className="mt-0.5 rounded text-indigo-600 cursor-pointer"
-                  />
-                  <div className="flex-1 text-xs">
-                    <span className={todo.status === "completed" ? "line-through text-slate-400" : "font-medium"}>
+                  <div
+                    className="flex items-center gap-2.5 flex-1 cursor-pointer"
+                    onClick={() => handleUpdateTodoStatus(todo, todo.status === "completed" ? "open" : "completed")}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={todo.status === "completed"}
+                      readOnly
+                      className="rounded text-indigo-600 cursor-pointer"
+                    />
+                    <span className={`text-xs ${todo.status === "completed" ? "line-through text-slate-400" : "font-medium"}`}>
                       {todo.title}
                     </span>
-                    {todo.due_date && (
-                      <span className="ml-2 text-[10px] text-slate-400">截止: {todo.due_date}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px]">
+                    {todo.status === "open" && (
+                      <>
+                        <button
+                          type="button"
+                          className="text-amber-600 hover:underline px-1.5 py-0.5"
+                          onClick={() => handleUpdateTodoStatus(todo, "postponed")}
+                        >
+                          延期
+                        </button>
+                        <button
+                          type="button"
+                          className="text-slate-400 hover:text-red-500 px-1.5 py-0.5"
+                          onClick={() => handleUpdateTodoStatus(todo, "cancelled")}
+                        >
+                          取消
+                        </button>
+                      </>
+                    )}
+                    {todo.status !== "open" && (
+                      <span className="text-slate-400">
+                        {todo.status === "completed" ? "已完成" : todo.status === "postponed" ? "已延期" : "已取消"}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -494,7 +553,7 @@ function TodayView({ displayName, onNavigate, workspace }) {
               className="text-xs text-indigo-600 hover:underline"
               onClick={() => onNavigate("日程")}
             >
-              查看日程
+              查看日程中心
             </button>
           </div>
           <div className="space-y-2 flex-1 overflow-y-auto max-h-[360px]">
@@ -512,7 +571,7 @@ function TodayView({ displayName, onNavigate, workspace }) {
                   <div className="flex-1 text-xs">
                     <strong className="text-slate-800 font-medium">{item.title}</strong>
                     <div className="text-[11px] text-slate-500 mt-0.5">
-                      {item.start_at} - {item.end_at}
+                      {item.start_at?.split("T")[1]?.slice(0, 5) || item.start_at} - {item.end_at?.split("T")[1]?.slice(0, 5) || item.end_at}
                     </div>
                   </div>
                 </div>
@@ -529,6 +588,7 @@ function TodosView() {
   const [todos, setTodos] = useState([]);
   const [filter, setFilter] = useState("all");
   const [title, setTitle] = useState("");
+  const todayIso = getLocalDateString();
 
   const load = async () => {
     const res = await fetchJson("/api/v1/todos");
@@ -545,25 +605,26 @@ function TodosView() {
     await fetchJson("/api/v1/todos", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: title.trim() }),
+      body: JSON.stringify({ title: title.trim(), due_date: todayIso }),
     });
     setTitle("");
     await load();
   };
 
-  const toggle = async (todo) => {
-    const next = todo.status === "completed" ? "open" : "completed";
+  const updateStatus = async (todo, nextStatus) => {
     await fetchJson(`/api/v1/todos/${todo.id}/status`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: next }),
+      body: JSON.stringify({ status: nextStatus }),
     });
     await load();
   };
 
   const filtered = todos.filter((t) => {
     if (filter === "completed") return t.status === "completed";
-    if (filter === "open") return t.status !== "completed";
+    if (filter === "postponed") return t.status === "postponed";
+    if (filter === "cancelled") return t.status === "cancelled";
+    if (filter === "open") return t.status === "open";
     return true;
   });
 
@@ -573,9 +634,16 @@ function TodosView() {
         <div>
           <span className="eyebrow">TODOS MANAGEMENT</span>
           <h2 className="text-2xl font-bold text-slate-800">待办事项</h2>
+          <p className="text-sm text-slate-500 mt-1">管理你的全部待办、完成状态、延期与取消留痕。</p>
         </div>
         <div className="flex gap-2">
-          {["all", "open", "completed"].map((key) => (
+          {[
+            { key: "all", label: "全部" },
+            { key: "open", label: "待完成" },
+            { key: "completed", label: "已完成" },
+            { key: "postponed", label: "已延期" },
+            { key: "cancelled", label: "已取消" },
+          ].map(({ key, label }) => (
             <button
               key={key}
               type="button"
@@ -584,7 +652,7 @@ function TodosView() {
               }`}
               onClick={() => setFilter(key)}
             >
-              {key === "all" ? "全部" : key === "open" ? "待完成" : "已完成"}
+              {label}
             </button>
           ))}
         </div>
@@ -598,7 +666,7 @@ function TodosView() {
           className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
         />
         <button type="submit" className="primary !rounded-xl !px-5 !py-2.5 text-sm">
-          添加
+          添加待办
         </button>
       </form>
 
@@ -609,21 +677,66 @@ function TodosView() {
           filtered.map((todo) => (
             <div
               key={todo.id}
-              onClick={() => toggle(todo)}
-              className="flex items-center gap-3 p-4 hover:bg-slate-50/50 cursor-pointer"
+              className="flex items-center justify-between p-4 hover:bg-slate-50/50"
             >
-              <input type="checkbox" checked={todo.status === "completed"} readOnly className="rounded" />
-              <div className="flex-1 text-sm">
-                <span className={todo.status === "completed" ? "line-through text-slate-400" : "text-slate-800"}>
-                  {todo.title}
-                </span>
-                {todo.due_date && <small className="ml-3 text-xs text-slate-400">截止: {todo.due_date}</small>}
+              <div
+                className="flex items-center gap-3 flex-1 cursor-pointer"
+                onClick={() => updateStatus(todo, todo.status === "completed" ? "open" : "completed")}
+              >
+                <input type="checkbox" checked={todo.status === "completed"} readOnly className="rounded" />
+                <div className="text-sm">
+                  <span className={todo.status === "completed" ? "line-through text-slate-400" : "text-slate-800"}>
+                    {todo.title}
+                  </span>
+                  {todo.due_date && <small className="ml-3 text-xs text-slate-400">截止: {todo.due_date}</small>}
+                </div>
               </div>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                todo.status === "completed" ? "bg-emerald-50 text-emerald-600" : "bg-indigo-50 text-indigo-600"
-              }`}>
-                {todo.status === "completed" ? "已完成" : "待处理"}
-              </span>
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-medium ${
+                  todo.status === "completed"
+                    ? "bg-emerald-50 text-emerald-600"
+                    : todo.status === "postponed"
+                    ? "bg-amber-50 text-amber-600"
+                    : todo.status === "cancelled"
+                    ? "bg-red-50 text-red-500"
+                    : "bg-indigo-50 text-indigo-600"
+                }`}>
+                  {todo.status === "completed"
+                    ? "已完成"
+                    : todo.status === "postponed"
+                    ? "已延期"
+                    : todo.status === "cancelled"
+                    ? "已取消"
+                    : "待完成"}
+                </span>
+                {todo.status === "open" && (
+                  <>
+                    <button
+                      type="button"
+                      className="text-xs text-amber-600 hover:underline px-1.5 py-0.5"
+                      onClick={() => updateStatus(todo, "postponed")}
+                    >
+                      延期
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs text-slate-400 hover:text-red-500 px-1.5 py-0.5"
+                      onClick={() => updateStatus(todo, "cancelled")}
+                    >
+                      取消
+                    </button>
+                  </>
+                )}
+                {todo.status !== "open" && (
+                  <button
+                    type="button"
+                    className="text-xs text-slate-400 hover:underline px-1.5 py-0.5"
+                    onClick={() => updateStatus(todo, "open")}
+                  >
+                    重开
+                  </button>
+                )}
+              </div>
             </div>
           ))
         )}
@@ -674,24 +787,89 @@ function ScheduleView() {
 }
 
 function ReviewView() {
+  const [todos, setTodos] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const todayIso = getLocalDateString();
+
+  useEffect(() => {
+    Promise.all([
+      fetchJson(`/api/v1/todos?due_date=${todayIso}`),
+      fetchJson("/api/v1/audit-logs?entity_type=todo&limit=30"),
+    ])
+      .then(([todoData, auditData]) => {
+        setTodos(todoData.todos || []);
+        setAuditLogs(auditData.logs || []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  const completedCount = todos.filter((t) => t.status === "completed").length;
+  const postponedCount = todos.filter((t) => t.status === "postponed").length;
+  const cancelledCount = todos.filter((t) => t.status === "cancelled").length;
+  const openCount = todos.filter((t) => t.status === "open").length;
+
   return (
     <section className="p-8 max-w-4xl mx-auto space-y-6">
       <div>
         <span className="eyebrow">ACTION REVIEW & AUDIT</span>
-        <h2 className="text-2xl font-bold text-slate-800">复盘与留痕</h2>
+        <h2 className="text-2xl font-bold text-slate-800">今日复盘与行动留痕</h2>
         <p className="text-sm text-slate-500 mt-1">
-          回顾每日计划与实际执行差异、延期事项与成果归档。
+          真实统计今日待办完成率、延期与取消变动，并提供可追溯的审计审计日志。
         </p>
       </div>
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
-        <h3 className="text-base font-semibold text-slate-800">晚间智能复盘机制</h3>
-        <p className="text-sm text-slate-600 leading-relaxed">
-          每晚 23:00（或在“今天”页面手动触发），系统将结算今日待办事实，统计完成、取消或延期情况，并级联投影至本地 Markdown 周期复盘日记与飞书卡片。
-        </p>
-        <div className="pt-2 border-t border-slate-100 flex items-center gap-2 text-xs text-slate-400">
-          <CheckCircle2 size={14} className="text-emerald-500" />
-          <span>结构化事实源：SQLite todo_records & schedule_records</span>
+
+      {/* Metrics Bento */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <span className="text-xs text-slate-500">今日总计划</span>
+          <strong className="block text-2xl font-bold text-slate-800 mt-1">{todos.length}</strong>
         </div>
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <span className="text-xs text-emerald-600 font-medium">已完成</span>
+          <strong className="block text-2xl font-bold text-emerald-600 mt-1">{completedCount}</strong>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <span className="text-xs text-amber-600 font-medium">已延期</span>
+          <strong className="block text-2xl font-bold text-amber-600 mt-1">{postponedCount}</strong>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm">
+          <span className="text-xs text-red-500 font-medium">已取消 / 待办中</span>
+          <strong className="block text-2xl font-bold text-slate-700 mt-1">{cancelledCount} / {openCount}</strong>
+        </div>
+      </div>
+
+      {/* Audit Log Timeline */}
+      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <h3 className="text-base font-semibold text-slate-800 flex items-center gap-2">
+            <History size={16} className="text-indigo-600" />
+            <span>行动变更留痕 (Audit Log)</span>
+          </h3>
+          <span className="text-xs text-slate-400">SQLite audit_log 结构化事实</span>
+        </div>
+
+        {loading ? (
+          <div className="py-6 text-center text-slate-400 text-xs">正在读取本地审计事实...</div>
+        ) : auditLogs.length === 0 ? (
+          <div className="py-6 text-center text-slate-400 text-xs">暂无审计留痕记录。</div>
+        ) : (
+          <div className="space-y-3">
+            {auditLogs.map((log) => (
+              <div key={log.id} className="flex items-start justify-between text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                <div>
+                  <strong className="text-slate-800 font-semibold">{log.action}</strong>
+                  <span className="text-slate-500 ml-2">
+                    {log.before_value ? `(${log.before_value} → ${log.after_value})` : log.after_value}
+                  </span>
+                </div>
+                <span className="text-slate-400 text-[11px]">{log.created_at}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </section>
   );
