@@ -105,6 +105,7 @@ from .replies import (
     update_feishu_reply as _update_feishu_reply,
 )
 from . import message_processor, progress
+from services.agent_requests import agent_request_service
 from storage.facts import record_lifestyle_fact
 from services.lifestyle.nutrition_analysis import estimate_meal
 from services.lifestyle.nutrition_analysis import handle_confirmation
@@ -318,6 +319,17 @@ def on_p2_im_message_receive_v1(data: lark.im.v1.P2ImMessageReceiveV1) -> None:
     except Exception as e:
         logger.error(f"❌ 消息事件分发异常: {e}", exc_info=True)
 
+def on_p2_im_message_recalled_v1(data: lark.im.v1.P2ImMessageRecalledV1) -> None:
+    """Handle message recall events: cancel in-flight agent processing."""
+    try:
+        msg_id = data.event.message_id
+        logger.info(f"🔄 [收到消息撤回事件] MsgID: {msg_id}")
+        cancelled_ids = agent_request_service.cancel_by_source_message(msg_id)
+        if cancelled_ids:
+            logger.info(f"🛑 成功取消关联任务: {cancelled_ids}")
+    except Exception as e:
+        logger.error(f"❌ 消息撤回事件处理异常: {e}", exc_info=True)
+
 def run_server():
     """Start WebSocket Long Connection Client in daemon mode."""
     missing = [
@@ -334,8 +346,13 @@ def run_server():
     logger.info(f"🧠 大脑引擎: 原生 Google Antigravity (language_server.exe agentapi)")
     logger.info("📡 正在连接飞书开放平台 WebSocket 事件通道...")
     
+    recovered = agent_request_service.recover_interrupted_requests()
+    if recovered > 0:
+        logger.info(f"🧹 服务启动自愈：已恢复清理 {recovered} 个未决/遗留的 Agent 请求状态")
+
     event_handler = lark.EventDispatcherHandler.builder("", "") \
         .register_p2_im_message_receive_v1(on_p2_im_message_receive_v1) \
+        .register_p2_im_message_recalled_v1(on_p2_im_message_recalled_v1) \
         .build()
         
     ws_client = WsClient(

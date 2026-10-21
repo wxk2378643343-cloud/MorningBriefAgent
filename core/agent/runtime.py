@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Protocol
 
@@ -13,7 +14,7 @@ class ProviderCapabilities:
     tools: bool = False
     subtasks: bool = False
     structured_output: bool = True
-    cancellation: bool = False
+    cancellation: bool = True
 
 
 @dataclass(frozen=True)
@@ -37,15 +38,29 @@ class AgentResponse:
     duration_ms: int | None = None
 
 
+@dataclass(frozen=True)
+class ProviderHealth:
+    available: bool
+    status: str
+    detail: str = ""
+
+
 class AgentProvider(Protocol):
     name: str
     capabilities: ProviderCapabilities
 
-    def invoke(self, request: AgentRequest) -> AgentResponse: ...
+    def invoke(
+        self,
+        request_id: str,
+        request: AgentRequest,
+        cancel_event: threading.Event | None = None,
+    ) -> AgentResponse: ...
 
-    def stream(self, request: AgentRequest) -> Iterable[str]: ...
+    def stream(self, request_id: str, request: AgentRequest) -> Iterable[str]: ...
 
     def cancel(self, request_id: str) -> bool: ...
+
+    def health(self) -> ProviderHealth: ...
 
 
 class ProviderError(RuntimeError):
