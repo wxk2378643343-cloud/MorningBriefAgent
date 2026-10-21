@@ -25,6 +25,7 @@ def _record_audit(
 
 import hashlib
 from typing import Any
+from datetime import datetime, timezone
 
 from .sqlite import connect, initialize
 
@@ -335,6 +336,33 @@ def list_schedules(
         return [dict(row) for row in connection.execute(query, params).fetchall()]
 
 
+
+def parse_audit_time(val: str | None) -> str | None:
+    """Parse and normalize time string to SQLite UTC format 'YYYY-MM-DD HH:MM:SS'.
+
+    Strict requirements:
+    1. If val is empty, return None.
+    2. Must contain explicit timezone indicator: 'Z' or offset like '+08:00', '-05:00'.
+    3. If val has no timezone indicator, raise ValueError('invalid_time_range').
+    4. Internal storage format: if val is already normalized 'YYYY-MM-DD HH:MM:SS' and internal,
+       we only allow ISO strings with explicit timezones for public inputs.
+    """
+    if not val:
+        return None
+    val = val.strip()
+    # Check for timezone indicator
+    has_tz = val.endswith("Z") or ("T" in val and ("+" in val[10:] or "-" in val[10:]))
+    if not has_tz:
+        raise ValueError("invalid_time_range")
+    try:
+        # Standardize 'Z' to '+00:00' for fromisoformat
+        iso_str = val[:-1] + "+00:00" if val.endswith("Z") else val
+        dt = datetime.fromisoformat(iso_str)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as exc:
+        raise ValueError("invalid_time_range") from exc
+
+
 def list_audit_logs(
     *,
     entity_type: str | None = None,
@@ -344,18 +372,21 @@ def list_audit_logs(
     database_path: str | None = None,
 ) -> list[dict[str, Any]]:
     initialize(database_path)
+    parsed_start = parse_audit_time(start_time)
+    parsed_end = parse_audit_time(end_time)
+
     query = "SELECT * FROM audit_log"
     params: list[Any] = []
     conditions = []
     if entity_type:
         conditions.append("entity_type = ?")
         params.append(entity_type)
-    if start_time:
+    if parsed_start:
         conditions.append("created_at >= ?")
-        params.append(start_time)
-    if end_time:
+        params.append(parsed_start)
+    if parsed_end:
         conditions.append("created_at < ?")
-        params.append(end_time)
+        params.append(parsed_end)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY id DESC LIMIT ?"

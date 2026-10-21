@@ -7,9 +7,14 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from core.application.local_api import create_local_server
-from storage.planning import save_schedule, save_todo, list_schedules, list_audit_logs
-from storage.sqlite import initialize
-from storage.workspace import initialize_workspace
+from storage.planning import (
+    save_schedule,
+    save_todo,
+    list_schedules,
+    list_audit_logs,
+    parse_audit_time,
+)
+from storage.sqlite import initialize, connect
 
 
 class TodoScheduleApiTests(unittest.TestCase):
@@ -109,7 +114,6 @@ class TodoScheduleApiTests(unittest.TestCase):
             self.assertEqual(id1, id2)
 
             logs = list_audit_logs(entity_type="todo", database_path=database)
-            # Only one 'create' audit log should exist
             self.assertEqual(len(logs), 1)
             self.assertEqual(logs[0]["action"], "create")
 
@@ -133,16 +137,88 @@ class TodoScheduleApiTests(unittest.TestCase):
             database = Path(temp_dir) / "test.sqlite3"
             initialize(database)
 
-            # Schedule today
             save_schedule(title="今天下午会议", source_id="test_src", start_at="2026-10-22T15:00:00", end_at="2026-10-22T16:00:00", database_path=database)
-            # Schedule exactly at tomorrow midnight 00:00:00
             save_schedule(title="明天零点启动", source_id="test_src", start_at="2026-10-23T00:00:00", end_at="2026-10-23T01:00:00", database_path=database)
 
-            # Query for [2026-10-22, 2026-10-23)
             today_schedules = list_schedules(start_date="2026-10-22T00:00:00", end_date="2026-10-23T00:00:00", database_path=database)
             titles = [s["title"] for s in today_schedules]
             self.assertIn("今天下午会议", titles)
             self.assertNotIn("明天零点启动", titles)
+
+    def test_audit_log_timezone_strict_validation(self):
+        # 1. Valid inputs: Z, positive offset (+08:00), negative offset (-05:00), with millis
+        self.assertEqual(parse_audit_time("2026-10-20T16:00:00Z"), "2026-10-20 16:00:00")
+        self.assertEqual(parse_audit_time("2026-10-20T16:00:00.123Z"), "2026-10-20 16:00:00")
+        self.assertEqual(parse_audit_time("2026-10-21T00:00:00+08:00"), "2026-10-20 16:00:00")
+        self.assertEqual(parse_audit_time("2026-10-20T11:00:00-05:00"), "2026-10-20 16:00:00")
+
+        # 2. Reject inputs without timezone indicator -> raises ValueError('invalid_time_range')
+        with self.assertRaises(ValueError):
+            parse_audit_time("2026-10-21 00:00:00")
+
+        with self.assertRaises(ValueError):
+            parse_audit_time("2026-10-21T00:00:00")
+
+        with self.assertRaises(ValueError):
+            parse_audit_time("not-a-valid-date")
+
+        # 3. HTTP API level returns 400 for invalid/no timezone range
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "server.sqlite3"
+            initialize(database)
+            server = create_local_server(database_path=database)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            base = f"http://127.0.0.1:{server.server_port}"
+            try:
+                # Query with no timezone -> 400
+                with self.assertRaises(HTTPError) as ctx:
+                    self._get(f"{base}/api/v1/audit-logs?start_time=2026-10-21%2000:00:00")
+                self.assertEqual(ctx.exception.code, 400)
+
+                # Query with valid ISO UTC -> 200
+                res = self._get(f"{base}/api/v1/audit-logs?start_time=2026-10-20T16:00:00Z")
+                self.assertIn("logs", res)
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+
+    def test_audit_log_cst_midnight_boundary(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database = Path(temp_dir) / "test.sqlite3"
+            initialize(database)
+
+            # Insert raw audit logs with specific created_at UTC timestamps
+            with connect(database) as conn:
+                # Local CST 2026-10-21 01:00:00 -> UTC 2026-10-20 17:00:00
+                conn.execute(
+                    "INSERT INTO audit_log (entity_type, entity_id, action, actor, created_at) VALUES ('todo', 't1', 'cst_early_morning', 'test', '2026-10-20 17:00:00')"
+                )
+                # Local CST 2026-10-21 23:59:59 -> UTC 2026-10-21 15:59:59
+                conn.execute(
+                    "INSERT INTO audit_log (entity_type, entity_id, action, actor, created_at) VALUES ('todo', 't2', 'cst_late_night', 'test', '2026-10-21 15:59:59')"
+                )
+                # Local CST 2026-10-22 00:00:00 -> UTC 2026-10-21 16:00:00 (Next day midnight, strictly excluded)
+                conn.execute(
+                    "INSERT INTO audit_log (entity_type, entity_id, action, actor, created_at) VALUES ('todo', 't3', 'cst_next_day_midnight', 'test', '2026-10-21 16:00:00')"
+                )
+                # Previous day CST 2026-10-20 23:59:59 -> UTC 2026-10-20 15:59:59 (Previous day, excluded)
+                conn.execute(
+                    "INSERT INTO audit_log (entity_type, entity_id, action, actor, created_at) VALUES ('todo', 't4', 'cst_prev_day', 'test', '2026-10-20 15:59:59')"
+                )
+
+            # Query for CST today: [2026-10-21T00:00:00+08:00, 2026-10-22T00:00:00+08:00)
+            logs = list_audit_logs(
+                start_time="2026-10-21T00:00:00+08:00",
+                end_time="2026-10-22T00:00:00+08:00",
+                database_path=database,
+            )
+            actions = [l["action"] for l in logs]
+            self.assertIn("cst_early_morning", actions)
+            self.assertIn("cst_late_night", actions)
+            self.assertNotIn("cst_next_day_midnight", actions)
+            self.assertNotIn("cst_prev_day", actions)
 
 
 if __name__ == "__main__":

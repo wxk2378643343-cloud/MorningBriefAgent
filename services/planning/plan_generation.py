@@ -13,6 +13,7 @@ from core.agent import provider as agent_provider
 from core.agent.contracts import AgentPlan
 from core.runtime import config
 from storage.planning import persist_plan
+from storage.workspace import active_database_path
 from services.knowledge import project_plan
 
 
@@ -77,6 +78,9 @@ def load_staged_plan(path: os.PathLike[str] | str | None = None) -> Dict[str, An
 def save_staged_plan(
     data: Dict[str, Any],
     path: os.PathLike[str] | str | None = None,
+    *,
+    metadata_database_path: os.PathLike[str] | str | None = None,
+    database_path: os.PathLike[str] | str | None = None,
 ) -> None:
     target = Path(path or config.STAGED_PLAN_PATH or DEFAULT_STAGED_PLAN_FILE)
     try:
@@ -86,7 +90,12 @@ def save_staged_plan(
             encoding="utf-8",
         )
         try:
-            persist_plan(data)
+            target_db = (
+                Path(database_path).resolve()
+                if database_path
+                else active_database_path(metadata_database_path)
+            )
+            persist_plan(data, database_path=target_db)
             if path is None:
                 project_plan(data)
         except Exception as exc:

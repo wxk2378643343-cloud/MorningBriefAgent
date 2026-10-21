@@ -44,6 +44,9 @@ from services.knowledge.file_recovery import (
 from storage.planning import list_all_todos, list_audit_logs, list_schedules, save_todo, save_schedule, update_todo_status, TODO_VALID_STATUSES
 from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, reset_all
 from storage.workspace import (
+    active_database_path,
+    WorkspaceDatabaseUnavailableError,
+    MetadataDatabaseUnavailableError,
     default_workspace_root,
     initialize_workspace,
     save_personal_context,
@@ -66,16 +69,8 @@ class _Handler(BaseHTTPRequestHandler):
     server_version = "MorningBriefLocalAPI/1.0"
 
     def _get_active_database_path(self) -> Path:
-        """Return the workspace database if configured and exists, otherwise the server default database."""
-        try:
-            info = workspace_info(self.server.database_path)
-            if info.get("configured") and info.get("database_path"):
-                target = Path(info["database_path"]).resolve()
-                if target.is_file():
-                    return target
-        except Exception:
-            pass
-        return Path(self.server.database_path)
+        """Return the workspace database if configured and available; raise if unavailable."""
+        return active_database_path(self.server.database_path)
 
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(HTTPStatus.NO_CONTENT)
@@ -83,6 +78,17 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:  # noqa: N802
+        try:
+            self._do_get_inner()
+        except WorkspaceDatabaseUnavailableError:
+            self._send_json({"error": "workspace_database_unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+        except ValueError as exc:
+            if "invalid_time_range" in str(exc):
+                self._send_json({"error": "invalid_time_range"}, HTTPStatus.BAD_REQUEST)
+            else:
+                self._send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def _do_get_inner(self) -> None:
         if self.path == "/api/v1/health":
             self._send_json(
                 {
@@ -260,6 +266,12 @@ class _Handler(BaseHTTPRequestHandler):
             self._send_json({"error": "not_found"}, HTTPStatus.NOT_FOUND)
 
     def do_POST(self) -> None:  # noqa: N802
+        try:
+            self._do_post_inner()
+        except WorkspaceDatabaseUnavailableError:
+            self._send_json({"error": "workspace_database_unavailable"}, HTTPStatus.SERVICE_UNAVAILABLE)
+
+    def _do_post_inner(self) -> None:
         if self.path == "/api/v1/onboarding/reset":
             self._send_json(reset_all(database_path=self.server.database_path))
             return
@@ -281,6 +293,8 @@ class _Handler(BaseHTTPRequestHandler):
                     database_path=self._get_active_database_path(),
                 )
                 self._send_json({"ok": True, "id": todo_id})
+            except WorkspaceDatabaseUnavailableError:
+                raise
             except Exception as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
@@ -295,6 +309,8 @@ class _Handler(BaseHTTPRequestHandler):
                     return
                 ok = update_todo_status(todo_id, new_status, database_path=self._get_active_database_path())
                 self._send_json({"ok": ok})
+            except WorkspaceDatabaseUnavailableError:
+                raise
             except Exception as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
@@ -316,6 +332,8 @@ class _Handler(BaseHTTPRequestHandler):
                     database_path=self._get_active_database_path(),
                 )
                 self._send_json({"ok": True, "id": event_id})
+            except WorkspaceDatabaseUnavailableError:
+                raise
             except Exception as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return

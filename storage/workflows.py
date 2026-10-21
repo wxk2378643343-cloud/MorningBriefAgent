@@ -358,7 +358,11 @@ def _execute(run_id: str, command: str, database_path: str | Path, log_path: Pat
             process = subprocess.Popen(
                 [sys.executable, "main.py", command],
                 cwd=PROJECT_ROOT,
-                env={**__import__("os").environ, "PYTHONPATH": str(PROJECT_ROOT)},
+                env={
+                    **__import__("os").environ,
+                    "PYTHONPATH": str(PROJECT_ROOT),
+                    "MORNINGBRIEF_METADATA_DATABASE_PATH": str(Path(database_path).resolve()),
+                },
                 stdout=log,
                 stderr=subprocess.STDOUT,
             )

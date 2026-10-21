@@ -813,12 +813,17 @@ function ReviewView() {
   const [loading, setLoading] = useState(true);
 
   const todayIso = getLocalDateString();
-  const tomorrowIso = getLocalDateString(new Date(Date.now() + 86400000));
 
   useEffect(() => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+    const startUtcIso = encodeURIComponent(startOfToday.toISOString());
+    const endUtcIso = encodeURIComponent(endOfToday.toISOString());
+
     Promise.all([
       fetchJson(`/api/v1/todos?due_date=${todayIso}`),
-      fetchJson(`/api/v1/audit-logs?entity_type=todo&start_time=${todayIso} 00:00:00&end_time=${tomorrowIso} 00:00:00&limit=50`),
+      fetchJson(`/api/v1/audit-logs?entity_type=todo&start_time=${startUtcIso}&end_time=${endUtcIso}&limit=50`),
     ])
       .then(([todoData, auditData]) => {
         setTodos(todoData.todos || []);
