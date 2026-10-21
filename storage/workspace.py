@@ -171,6 +171,7 @@ def active_database_path(metadata_database_path: str | Path | None = None) -> Pa
        - If probe succeeds, return the Path object.
        - If missing, damaged, locked or inaccessible, raise WorkspaceDatabaseUnavailableError.
     """
+    explicit_path_provided = bool(metadata_database_path or os.getenv("MORNINGBRIEF_METADATA_DATABASE_PATH"))
     if metadata_database_path:
         meta_path = Path(metadata_database_path).resolve()
     elif os.getenv("MORNINGBRIEF_METADATA_DATABASE_PATH"):
@@ -178,8 +179,39 @@ def active_database_path(metadata_database_path: str | Path | None = None) -> Pa
     else:
         meta_path = Path(config.SQLITE_DATABASE_PATH).resolve()
 
+    # If an explicit metadata database path was specified, it MUST exist and be readable.
+    # Never call initialize() which silently creates a new empty database!
+    if explicit_path_provided:
+        if not meta_path.is_file():
+            raise MetadataDatabaseUnavailableError(f"Explicit metadata database file does not exist: {meta_path}")
+        uri = f"file:{meta_path.as_posix()}?mode=ro"
+        try:
+            conn = sqlite3.connect(uri, uri=True, timeout=2.0)
+            try:
+                conn.execute("PRAGMA schema_version").fetchone()
+            finally:
+                conn.close()
+        except Exception as exc:
+            raise MetadataDatabaseUnavailableError(f"Explicit metadata database probe failed at {meta_path}: {exc}") from exc
+
     try:
-        info = workspace_info(meta_path)
+        with connect(meta_path) as connection:
+            # Check if installation_state table exists before querying
+            table_check = connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='installation_state'"
+            ).fetchone()
+            if table_check is None:
+                # Fresh or uninitialized SQLite DB without installation_state -> treated as unconfigured workspace
+                return meta_path
+            row = connection.execute(
+                "SELECT workspace_root FROM installation_state WHERE id = 1"
+            ).fetchone()
+        root = Path(str(row["workspace_root"])).resolve() if row and row["workspace_root"] else None
+        info = {
+            "configured": bool(root and root.is_dir()),
+            "root_path": str(root) if root else None,
+            "database_path": str(root / "data" / "app.sqlite3") if root else str(meta_path),
+        }
     except Exception as exc:
         raise MetadataDatabaseUnavailableError(f"Failed to read metadata database {meta_path}: {exc}") from exc
 

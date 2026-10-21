@@ -219,6 +219,38 @@ class WorkspaceDatabaseBindingTests(unittest.TestCase):
                 server.server_close()
                 thread.join(timeout=2)
 
+    def test_missing_explicit_metadata_db_not_created_and_raises(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing_meta = Path(temp_dir) / "does_not_exist.sqlite3"
+            self.assertFalse(missing_meta.exists())
+
+            # Calling active_database_path with non-existent explicit path must raise
+            # MetadataDatabaseUnavailableError and NEVER create the file!
+            with self.assertRaises(MetadataDatabaseUnavailableError):
+                active_database_path(missing_meta)
+
+            self.assertFalse(missing_meta.exists(), "Missing metadata db should NOT be created silently")
+
+    def test_save_staged_plan_propagates_database_errors(self):
+        with tempfile.TemporaryDirectory() as server_dir, tempfile.TemporaryDirectory() as user_ws_dir, tempfile.TemporaryDirectory() as plan_dir:
+            server_db = Path(server_dir) / "server.sqlite3"
+            initialize(server_db)
+            ws_info = initialize_workspace(user_ws_dir, database_path=server_db)
+            ws_db = Path(ws_info["database_path"])
+
+            # Delete workspace database
+            ws_db.unlink()
+
+            staged_path = Path(plan_dir) / "staged.json"
+            plan_data = {
+                "date": "2026-10-22",
+                "todos": ["不应被静默吞掉的待办"],
+            }
+
+            # save_staged_plan MUST raise WorkspaceDatabaseUnavailableError and NOT swallow it
+            with self.assertRaises(WorkspaceDatabaseUnavailableError):
+                save_staged_plan(plan_data, path=staged_path, metadata_database_path=server_db)
+
 
 if __name__ == "__main__":
     unittest.main()
