@@ -58,25 +58,51 @@ def save_todo(
     todo_id = _id("todo", f"{source_id}:{title}:{due_date or ''}")
     with connect(database_path) as connection:
         _ensure_source(connection, source_id)
-        connection.execute(
-            """
-            INSERT INTO todo_records
-              (id, source_id, title, status, priority, due_date, feishu_task_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              status=excluded.status, priority=excluded.priority,
-              due_date=excluded.due_date, feishu_task_id=excluded.feishu_task_id,
-              updated_at=CURRENT_TIMESTAMP
-            """,
-            (todo_id, source_id, title, status, priority, due_date, feishu_task_id),
-        )
-        _record_audit(
-            connection,
-            entity_type="todo",
-            entity_id=todo_id,
-            action="create" if status == "open" else "save",
-            after_value=title,
-        )
+        existing = connection.execute(
+            "SELECT status, priority, due_date, feishu_task_id FROM todo_records WHERE id = ?",
+            (todo_id,),
+        ).fetchone()
+
+        if existing is None:
+            connection.execute(
+                """
+                INSERT INTO todo_records
+                  (id, source_id, title, status, priority, due_date, feishu_task_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (todo_id, source_id, title, status, priority, due_date, feishu_task_id),
+            )
+            _record_audit(
+                connection,
+                entity_type="todo",
+                entity_id=todo_id,
+                action="create",
+                after_value=title,
+            )
+        else:
+            changed = (
+                existing["status"] != status
+                or existing["priority"] != priority
+                or existing["due_date"] != due_date
+                or existing["feishu_task_id"] != feishu_task_id
+            )
+            if changed:
+                connection.execute(
+                    """
+                    UPDATE todo_records
+                    SET status=?, priority=?, due_date=?, feishu_task_id=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (status, priority, due_date, feishu_task_id, todo_id),
+                )
+                _record_audit(
+                    connection,
+                    entity_type="todo",
+                    entity_id=todo_id,
+                    action="update",
+                    before_value=f"status={existing['status']}, priority={existing['priority']}",
+                    after_value=f"status={status}, priority={priority}",
+                )
     return todo_id
 
 
@@ -94,28 +120,52 @@ def save_schedule(
     event_id = _id("schedule", f"{source_id}:{title}:{start_at}:{end_at}")
     with connect(database_path) as connection:
         _ensure_source(connection, source_id)
-        connection.execute(
-            """
-            INSERT INTO schedule_records
-              (id, source_id, title, start_at, end_at, feishu_event_id, sync_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              feishu_event_id=excluded.feishu_event_id,
-              sync_status=excluded.sync_status,
-              updated_at=CURRENT_TIMESTAMP
-            """,
-            (
-                event_id, source_id, title, start_at, end_at,
-                feishu_event_id, sync_status,
-            ),
-        )
-        _record_audit(
-            connection,
-            entity_type="schedule",
-            entity_id=event_id,
-            action="create",
-            after_value=f"{title} ({start_at} - {end_at})",
-        )
+        existing = connection.execute(
+            "SELECT feishu_event_id, sync_status FROM schedule_records WHERE id = ?",
+            (event_id,),
+        ).fetchone()
+
+        if existing is None:
+            connection.execute(
+                """
+                INSERT INTO schedule_records
+                  (id, source_id, title, start_at, end_at, feishu_event_id, sync_status)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_id, source_id, title, start_at, end_at,
+                    feishu_event_id, sync_status,
+                ),
+            )
+            _record_audit(
+                connection,
+                entity_type="schedule",
+                entity_id=event_id,
+                action="create",
+                after_value=f"{title} ({start_at} - {end_at})",
+            )
+        else:
+            changed = (
+                existing["feishu_event_id"] != feishu_event_id
+                or existing["sync_status"] != sync_status
+            )
+            if changed:
+                connection.execute(
+                    """
+                    UPDATE schedule_records
+                    SET feishu_event_id=?, sync_status=?, updated_at=CURRENT_TIMESTAMP
+                    WHERE id=?
+                    """,
+                    (feishu_event_id, sync_status, event_id),
+                )
+                _record_audit(
+                    connection,
+                    entity_type="schedule",
+                    entity_id=event_id,
+                    action="update",
+                    before_value=f"sync_status={existing['sync_status']}",
+                    after_value=f"sync_status={sync_status}",
+                )
     return event_id
 
 
@@ -276,7 +326,7 @@ def list_schedules(
         conditions.append("start_at >= ?")
         params.append(start_date)
     if end_date:
-        conditions.append("start_at <= ?")
+        conditions.append("start_at < ?")
         params.append(end_date)
     if conditions:
         query += " WHERE " + " AND ".join(conditions)
@@ -286,14 +336,28 @@ def list_schedules(
 
 
 def list_audit_logs(
-    *, entity_type: str | None = None, limit: int = 50, database_path: str | None = None
+    *,
+    entity_type: str | None = None,
+    start_time: str | None = None,
+    end_time: str | None = None,
+    limit: int = 50,
+    database_path: str | None = None,
 ) -> list[dict[str, Any]]:
     initialize(database_path)
     query = "SELECT * FROM audit_log"
     params: list[Any] = []
+    conditions = []
     if entity_type:
-        query += " WHERE entity_type = ?"
+        conditions.append("entity_type = ?")
         params.append(entity_type)
+    if start_time:
+        conditions.append("created_at >= ?")
+        params.append(start_time)
+    if end_time:
+        conditions.append("created_at < ?")
+        params.append(end_time)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
     query += " ORDER BY id DESC LIMIT ?"
     params.append(limit)
     with connect(database_path) as connection:

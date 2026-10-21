@@ -65,6 +65,18 @@ from storage.workflows import (
 class _Handler(BaseHTTPRequestHandler):
     server_version = "MorningBriefLocalAPI/1.0"
 
+    def _get_active_database_path(self) -> Path:
+        """Return the workspace database if configured and exists, otherwise the server default database."""
+        try:
+            info = workspace_info(self.server.database_path)
+            if info.get("configured") and info.get("database_path"):
+                target = Path(info["database_path"]).resolve()
+                if target.is_file():
+                    return target
+        except Exception:
+            pass
+        return Path(self.server.database_path)
+
     def do_OPTIONS(self) -> None:  # noqa: N802
         self.send_response(HTTPStatus.NO_CONTENT)
         self._send_cors_headers()
@@ -114,15 +126,15 @@ class _Handler(BaseHTTPRequestHandler):
             entity_type = self._query_value("entity_type")
             limit_val = self._query_value("limit")
             limit = int(limit_val) if limit_val and limit_val.isdigit() else 50
-            self._send_json({"logs": list_audit_logs(entity_type=entity_type, limit=limit, database_path=self.server.database_path)})
+            self._send_json({"logs": list_audit_logs(entity_type=entity_type, limit=limit, start_time=self._query_value("start_time"), end_time=self._query_value("end_time"), database_path=self._get_active_database_path())})
         elif self.path.startswith("/api/v1/todos"):
             status_param = self._query_value("status")
             due_date_param = self._query_value("due_date")
-            self._send_json({"todos": list_all_todos(status=status_param, due_date=due_date_param, database_path=self.server.database_path)})
+            self._send_json({"todos": list_all_todos(status=status_param, due_date=due_date_param, database_path=self._get_active_database_path())})
         elif self.path.startswith("/api/v1/schedules"):
             start_param = self._query_value("start_date")
             end_param = self._query_value("end_date")
-            self._send_json({"schedules": list_schedules(start_date=start_param, end_date=end_param, database_path=self.server.database_path)})
+            self._send_json({"schedules": list_schedules(start_date=start_param, end_date=end_param, database_path=self._get_active_database_path())})
         elif self.path == "/api/v1/workflows":
             self._send_json({
                 "workflows": list_workflows(self.server.database_path),
@@ -266,7 +278,7 @@ class _Handler(BaseHTTPRequestHandler):
                     source_id=source_id,
                     due_date=due_date,
                     priority=priority,
-                    database_path=self.server.database_path,
+                    database_path=self._get_active_database_path(),
                 )
                 self._send_json({"ok": True, "id": todo_id})
             except Exception as exc:
@@ -281,7 +293,7 @@ class _Handler(BaseHTTPRequestHandler):
                 if new_status not in TODO_VALID_STATUSES:
                     self._send_json({"error": "invalid_status", "valid_statuses": list(TODO_VALID_STATUSES)}, HTTPStatus.BAD_REQUEST)
                     return
-                ok = update_todo_status(todo_id, new_status, database_path=self.server.database_path)
+                ok = update_todo_status(todo_id, new_status, database_path=self._get_active_database_path())
                 self._send_json({"ok": ok})
             except Exception as exc:
                 self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
@@ -301,7 +313,7 @@ class _Handler(BaseHTTPRequestHandler):
                     source_id=source_id,
                     start_at=start_at,
                     end_at=end_at,
-                    database_path=self.server.database_path,
+                    database_path=self._get_active_database_path(),
                 )
                 self._send_json({"ok": True, "id": event_id})
             except Exception as exc:

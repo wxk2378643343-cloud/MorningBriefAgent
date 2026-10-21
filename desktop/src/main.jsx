@@ -188,6 +188,26 @@ function App() {
       setMessage(`配置未保存：${error.message || "请检查本地服务和输入内容"}`);
     }
   };
+
+  const skipStep = async (stepKey) => {
+    try {
+      const nextStatus = await fetchJson("/api/v1/onboarding/skip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ step_key: stepKey }),
+      });
+      setStatus(nextStatus);
+      setSetupStep(null);
+      if (nextStatus.complete && (setupMode || firstRun)) {
+        setSetupMode(false);
+        setActiveSection("今天");
+        setFirstRun(false);
+      }
+      setMessage("已跳过此步骤，稍后可在设置中配置");
+    } catch (error) {
+      setMessage(`跳过失败：${error.message || "请检查本地服务"}`);
+    }
+  };
   if (serviceState !== "ready") {
     return <StartupScreen serviceState={serviceState} serviceLabel={serviceLabel} onRetry={() => window.location.reload()} />;
   }
@@ -209,6 +229,7 @@ function App() {
         setSelectedProvider={setSelectedProvider}
         setSelectedChannel={setSelectedChannel}
         completeStep={completeStep}
+        skipStep={skipStep}
         onBack={() => {
           const index = ONBOARDING_STEPS.findIndex((step) => step.key === (setupStep ?? currentStep));
           if (index === 0) {
@@ -792,11 +813,12 @@ function ReviewView() {
   const [loading, setLoading] = useState(true);
 
   const todayIso = getLocalDateString();
+  const tomorrowIso = getLocalDateString(new Date(Date.now() + 86400000));
 
   useEffect(() => {
     Promise.all([
       fetchJson(`/api/v1/todos?due_date=${todayIso}`),
-      fetchJson("/api/v1/audit-logs?entity_type=todo&limit=30"),
+      fetchJson(`/api/v1/audit-logs?entity_type=todo&start_time=${todayIso} 00:00:00&end_time=${tomorrowIso} 00:00:00&limit=50`),
     ])
       .then(([todoData, auditData]) => {
         setTodos(todoData.todos || []);
