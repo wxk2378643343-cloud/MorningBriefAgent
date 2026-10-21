@@ -6,6 +6,8 @@ import os
 import threading
 from collections.abc import Callable
 from typing import Any
+from services.agent_requests import agent_request_service
+from server.progress import progress_controller
 
 from storage.usage import clear_last_usage, get_last_usage
 
@@ -124,7 +126,19 @@ def process_message(
             template="turquoise",
         )
         context = gather_context(user_text)
+        # 1. Idempotently register agent request in SQLite
+        request_id, is_new = agent_request_service.create_request(
+            source_message_id=msg_id,
+            prompt=user_text,
+            context=context,
+            request_kind="conversation",
+        )
+        if not is_new:
+            logger.info("Duplicate message %s skipped; request %s already exists", msg_id, request_id)
+            return
+
         if progress_message_id:
+            agent_request_service.attach_reply_card(request_id, progress_message_id)
             update(
                 progress_message_id,
                 "**✦ · ·  Agent 正在深度分析**\n\n"
@@ -133,19 +147,30 @@ def process_message(
                 title="🤖 AGY 智能协同助手 · 思考中",
                 template="turquoise",
             )
-            animation_stop = threading.Event()
-            animation_thread = threading.Thread(
-                target=animate,
-                args=(progress_message_id, animation_stop),
-                name=f"ThinkingAnimation-{msg_id[-8:]}",
-                daemon=True,
-            )
-            animation_thread.start()
+            progress_controller.set_update_fn(update)
+            cancel_event = progress_controller.start_progress(request_id, progress_message_id, update)
+        else:
+            cancel_event = None
 
-        logger.info("agent_started message_id=%s", msg_id)
+        logger.info("agent_started message_id=%s request_id=%s", msg_id, request_id)
         clear_last_usage()
-        reply_text = ask_agent(sender_open_id, user_text, context)
-        reply_text = _append_usage_footer(reply_text)
+
+        # 2. Execute via AgentRequestService
+        raw_reply, ok = agent_request_service.execute_request(
+            request_id, cancel_event=cancel_event
+        )
+
+        if not ok:
+            progress_controller.stop_progress(
+                request_id,
+                terminal_text=f"❌ **本次处理未完成。**\n\n{raw_reply}",
+                terminal_title="🤖 AGY 智能协同助手 · 处理失败",
+                template="red",
+            )
+            return
+
+        # 3. Success: format reply text and update terminal card
+        reply_text = _append_usage_footer(raw_reply)
         if estimate_result and estimate_result.get("status") == "pending":
             calories = estimate_result.get("calories_estimated")
             protein = estimate_result.get("protein_estimated")
@@ -160,36 +185,27 @@ def process_message(
                 + "这是 Agent 根据当前输入生成的估算值；如果不准确，直接告诉我正确热量，我会修改原记录。\n\n"
                 + reply_text
             )
-        stop_animation(animation_stop, animation_thread)
-        animation_stop = None
-        animation_thread = None
-        updated = bool(progress_message_id) and update(
-            progress_message_id,
-            reply_text,
-            title="🤖 AGY 智能协同助手",
+
+        progress_controller.stop_progress(
+            request_id,
+            terminal_text=reply_text,
+            terminal_title="🤖 AGY 智能协同助手",
             template="blue",
         )
-        if not updated:
-            reply(
-                msg_id, reply_text,
-                title="🤖 AGY 智能协同助手", template="blue",
-            )
-        else:
-            # Updating a Feishu card in place does not reliably create a new
-            # notification. Send a tiny completion event without duplicating
-            # the Agent answer, so the user is alerted to open the final card.
+        if progress_message_id:
             reply(
                 msg_id,
                 "✅ 已完成，请查看上一条结果。",
                 title="🤖 AGY 智能协同助手 · 已完成",
                 template="green",
             )
+        else:
+            reply(msg_id, reply_text, title="🤖 AGY 智能协同助手", template="blue")
     except Exception as exc:
         logger.error(
             "message_processing_failed message_id=%s error=%s",
             msg_id, exc, exc_info=True,
         )
-        stop_animation(animation_stop, animation_thread)
         error_text = (
             "❌ **本次处理未完成。**\n\n"
             "请稍后重试；错误详情已记录到本地日志。"
@@ -206,4 +222,3 @@ def process_message(
                 title="🤖 AGY 智能协同助手 · 处理失败",
                 template="red",
             )
-

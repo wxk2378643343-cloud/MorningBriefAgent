@@ -40,6 +40,27 @@ CREATE TABLE IF NOT EXISTS audit_log (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS agent_requests (
+    request_id TEXT PRIMARY KEY,
+    source_message_id TEXT NOT NULL,
+    request_kind TEXT NOT NULL DEFAULT 'conversation',
+    reply_message_id TEXT,
+    provider TEXT NOT NULL,
+    status TEXT NOT NULL, -- pending, running, completed, failed, cancelled, interrupted
+    prompt TEXT NOT NULL,
+    context TEXT,
+    result_text TEXT,
+    error TEXT,
+    started_at TEXT,
+    finished_at TEXT,
+    cancel_requested_at TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(source_message_id, request_kind)
+);
+CREATE INDEX IF NOT EXISTS idx_agent_requests_msg ON agent_requests(source_message_id);
+CREATE INDEX IF NOT EXISTS idx_agent_requests_status ON agent_requests(status);
+
 CREATE TABLE IF NOT EXISTS meal_records (
     fact_id TEXT PRIMARY KEY,
     calories_estimated REAL,
