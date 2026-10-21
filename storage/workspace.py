@@ -10,12 +10,9 @@ from storage.sqlite import connect, initialize
 
 WORKSPACE_DIRECTORIES = (
     "data",
-    "vault",
-    "logs",
     "attachments",
-    "conversations",
     "exports",
-    "config",
+    "logs",
 )
 
 OBSIDIAN_LAYOUT = {
@@ -45,14 +42,7 @@ def initialize_workspace(root_path: str | Path, *, database_path: str | Path | N
         raise NotADirectoryError(str(root))
     for directory in WORKSPACE_DIRECTORIES:
         (root / directory).mkdir(parents=True, exist_ok=True)
-    vault = root / "vault"
     created_files: list[str] = []
-    for relative_path, content in OBSIDIAN_LAYOUT.items():
-        target = vault / relative_path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        if not target.exists():
-            target.write_text(content, encoding="utf-8")
-            created_files.append(str(target))
     database = root / "data" / "app.sqlite3"
     initialize(database)
     metadata_database = Path(database_path) if database_path else database
@@ -88,7 +78,7 @@ def workspace_info(database_path: str | Path | None = None) -> dict[str, Any]:
         "root_path": str(root) if root else None,
         "default_root_path": str(default_workspace_root()),
         "database_path": str(root / "data" / "app.sqlite3") if root else str(database),
-        "vault_path": str(root / "vault") if root else None,
+        "vault_path": str(root / "vault") if root and (root / "vault").is_dir() else None,
         "directories": [str(root / item) for item in WORKSPACE_DIRECTORIES] if root else [],
     }
 
@@ -104,12 +94,15 @@ def save_personal_context(
     display_name = str(values.get("display_name", "")).strip()
     if len(display_name) > 40:
         raise ValueError("display_name_too_long")
-    target = Path(str(info["vault_path"])) / "个人上下文.md"
     context_values = {
         key: str(value).strip()
         for key, value in values.items()
         if key != "display_name" and str(value).strip()
     }
+    vault = Path(str(info["root_path"])) / "vault"
+    if context_values:
+        vault.mkdir(parents=True, exist_ok=True)
+    target = vault / "个人上下文.md"
     if context_values:
         content = "# 个人上下文\n\n"
         for key, value in context_values.items():

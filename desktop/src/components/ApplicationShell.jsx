@@ -1,21 +1,20 @@
 import React from "react";
 import {
-  Bot,
-  Database,
-  FolderOpen,
+  Calendar,
+  CheckSquare,
+  Clock,
+  History,
   LayoutDashboard,
   Settings2,
-  Workflow,
 } from "lucide-react";
 import DesktopMenuBar from "./DesktopMenuBar";
 import { DESKTOP_SECTIONS } from "./desktopNavigation";
 
 const NAVIGATION_ICONS = {
-  dashboard: LayoutDashboard,
-  files: FolderOpen,
-  workflow: Workflow,
-  database: Database,
-  agent: Bot,
+  today: LayoutDashboard,
+  todos: CheckSquare,
+  schedule: Calendar,
+  review: History,
 };
 
 function NavItem({ icon: Icon, label, active, onClick }) {
@@ -51,7 +50,7 @@ export default function ApplicationShell({
 
       <div className="shell-workspace-body">
         <aside className="sidebar">
-          <div className="workspace-label">本地工作台</div>
+          <div className="workspace-label">个人助手</div>
           <nav>
             {DESKTOP_SECTIONS.map(({ key, icon }) => (
               <NavItem

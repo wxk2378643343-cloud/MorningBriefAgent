@@ -169,3 +169,58 @@ def persist_plan(
                 sync_status="planned",
                 database_path=database_path,
             )
+
+
+def list_all_todos(
+    *, status: str | None = None, database_path: str | None = None
+) -> list[dict[str, Any]]:
+    initialize(database_path)
+    query = "SELECT * FROM todo_records"
+    params: list[Any] = []
+    if status:
+        query += " WHERE status = ?"
+        params.append(status)
+    query += " ORDER BY due_date IS NULL, due_date, priority, created_at DESC"
+    with connect(database_path) as connection:
+        return [dict(row) for row in connection.execute(query, params).fetchall()]
+
+
+def update_todo_status(
+    todo_id: str,
+    status: str,
+    *,
+    database_path: str | None = None,
+) -> bool:
+    initialize(database_path)
+    with connect(database_path) as connection:
+        cursor = connection.execute(
+            """
+            UPDATE todo_records
+            SET status=?,
+                completed_at=CASE WHEN ? = 'completed' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                updated_at=CURRENT_TIMESTAMP
+            WHERE id=?
+            """,
+            (status, status, todo_id),
+        )
+        return cursor.rowcount > 0
+
+
+def list_schedules(
+    *, start_date: str | None = None, end_date: str | None = None, database_path: str | None = None
+) -> list[dict[str, Any]]:
+    initialize(database_path)
+    query = "SELECT * FROM schedule_records"
+    params: list[Any] = []
+    conditions = []
+    if start_date:
+        conditions.append("start_at >= ?")
+        params.append(start_date)
+    if end_date:
+        conditions.append("start_at <= ?")
+        params.append(end_date)
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+    query += " ORDER BY start_at ASC"
+    with connect(database_path) as connection:
+        return [dict(row) for row in connection.execute(query, params).fetchall()]

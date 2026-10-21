@@ -41,6 +41,7 @@ from services.knowledge.file_recovery import (
     reconcile_pending_file_operations,
     restore_file,
 )
+from storage.planning import list_all_todos, list_schedules, save_todo, save_schedule, update_todo_status
 from storage.onboarding import ONBOARDING_STEPS, complete_step, get_status, reset_all
 from storage.workspace import (
     default_workspace_root,
@@ -109,6 +110,13 @@ class _Handler(BaseHTTPRequestHandler):
                         )
                     }
                 )
+        elif self.path.startswith("/api/v1/todos"):
+            status_param = self._query_value("status")
+            self._send_json({"todos": list_all_todos(status=status_param, database_path=self.server.database_path)})
+        elif self.path.startswith("/api/v1/schedules"):
+            start_param = self._query_value("start_date")
+            end_param = self._query_value("end_date")
+            self._send_json({"schedules": list_schedules(start_date=start_param, end_date=end_param, database_path=self.server.database_path)})
         elif self.path == "/api/v1/workflows":
             self._send_json({
                 "workflows": list_workflows(self.server.database_path),
@@ -237,22 +245,81 @@ class _Handler(BaseHTTPRequestHandler):
         if self.path == "/api/v1/onboarding/reset":
             self._send_json(reset_all(database_path=self.server.database_path))
             return
+        if self.path == "/api/v1/todos":
+            try:
+                payload = self._read_json()
+                title = str(payload.get("title", "")).strip()
+                if not title:
+                    self._send_json({"error": "title_required"}, HTTPStatus.BAD_REQUEST)
+                    return
+                due_date = payload.get("due_date")
+                priority = payload.get("priority", "normal")
+                source_id = payload.get("source_id", "manual_desktop")
+                todo_id = save_todo(
+                    title=title,
+                    source_id=source_id,
+                    due_date=due_date,
+                    priority=priority,
+                    database_path=self.server.database_path,
+                )
+                self._send_json({"ok": True, "id": todo_id})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if self.path.startswith("/api/v1/todos/") and self.path.endswith("/status"):
+            try:
+                parts = self.path.split("/")
+                todo_id = parts[4]
+                payload = self._read_json()
+                new_status = str(payload.get("status", "open")).strip()
+                ok = update_todo_status(todo_id, new_status, database_path=self.server.database_path)
+                self._send_json({"ok": ok})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        if self.path == "/api/v1/schedules":
+            try:
+                payload = self._read_json()
+                title = str(payload.get("title", "")).strip()
+                start_at = str(payload.get("start_at", "")).strip()
+                end_at = str(payload.get("end_at", "")).strip()
+                if not title or not start_at or not end_at:
+                    self._send_json({"error": "missing_schedule_fields"}, HTTPStatus.BAD_REQUEST)
+                    return
+                source_id = payload.get("source_id", "manual_desktop")
+                event_id = save_schedule(
+                    title=title,
+                    source_id=source_id,
+                    start_at=start_at,
+                    end_at=end_at,
+                    database_path=self.server.database_path,
+                )
+                self._send_json({"ok": True, "id": event_id})
+            except Exception as exc:
+                self._send_json({"error": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
         if self.path in {"/api/v1/workspace/select", "/api/v1/workspace/initialize"}:
             try:
                 payload = self._read_json()
                 root_path = str(payload.get("root_path", "")).strip() or str(default_workspace_root())
                 result = initialize_workspace(root_path, database_path=self.server.database_path)
-                source_id = register_source(
-                    "知识库",
-                    result["vault_path"],
-                    database_path=self.server.database_path,
-                )
-                result["source_id"] = source_id
-                result["indexed_files"] = scan_source(
-                    source_id,
-                    database_path=self.server.database_path,
-                )
-                result["active_source_id"] = source_id
+                vault_path = result.get("vault_path")
+                if vault_path:
+                    source_id = register_source(
+                        "知识库",
+                        vault_path,
+                        database_path=self.server.database_path,
+                    )
+                    result["source_id"] = source_id
+                    result["indexed_files"] = scan_source(
+                        source_id,
+                        database_path=self.server.database_path,
+                    )
+                    result["active_source_id"] = source_id
+                else:
+                    result["source_id"] = None
+                    result["indexed_files"] = 0
+                    result["active_source_id"] = None
                 self._send_json(result)
             except (ValueError, TypeError, OSError) as exc:
                 self._send_json({"error": "workspace_initialization_failed", "message": str(exc)}, HTTPStatus.BAD_REQUEST)

@@ -1,9 +1,8 @@
 export const DESKTOP_SECTIONS = [
-  { key: "工作台", label: "工作台首页", shortcut: "Ctrl+1", icon: "dashboard" },
-  { key: "文件与数据", label: "知识库与文件工作台", shortcut: "Ctrl+2", icon: "files" },
-  { key: "工作流", label: "工作流调度中心", shortcut: "Ctrl+3", icon: "workflow" },
-  { key: "数据库", label: "SQLite 数据库中心", shortcut: "Ctrl+4", icon: "database" },
-  { key: "Agent 运行", label: "Agent 运行时监控", shortcut: "Ctrl+5", icon: "agent" },
+  { key: "今天", label: "今日日程与待办", shortcut: "Ctrl+1", icon: "today" },
+  { key: "待办", label: "待办事项管理", shortcut: "Ctrl+2", icon: "todos" },
+  { key: "日程", label: "日历日程概览", shortcut: "Ctrl+3", icon: "schedule" },
+  { key: "复盘", label: "每日/每周行动复盘", shortcut: "Ctrl+4", icon: "review" },
 ];
 
 export const SETTINGS_SECTION = {
@@ -14,7 +13,6 @@ export const SETTINGS_SECTION = {
 };
 
 export const WORKFLOW_ACTIONS = [
-  { key: "morning_brief", name: "晨间简报与指数资讯", label: "立即执行：晨间新闻行情简报", tone: "amber" },
-  { key: "evening_review", name: "夜间智能复盘与健康报告", label: "立即执行：夜间智能复盘", tone: "indigo" },
-  { key: "todo_sync", name: "待办归档与飞书多维表格同步", label: "立即执行：待办事项双向同步", tone: "emerald" },
+  { key: "todo-morning", name: "早间行动与日程", label: "立即执行：早间计划与日程派发", tone: "amber" },
+  { key: "todo-evening", name: "晚间复盘总结", label: "立即执行：晚间行动复盘与归档", tone: "indigo" },
 ];

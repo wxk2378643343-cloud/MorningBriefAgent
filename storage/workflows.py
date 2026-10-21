@@ -32,12 +32,12 @@ DEFAULT_WORKFLOWS = [
         "title": "知识库简报智能体",
         "command": "brief",
         "default_time": "06:30",
-        "schedule_type": "daily",
-        "enabled": True,
+        "schedule_type": "manual",
+        "enabled": False,
         "description": "从本地 Markdown 知识库深度提炼今日核心关注点与行动清单。",
         "inputs": "Markdown 知识库",
         "outputs": "简报 Markdown、飞书推送",
-        "task_name": "KaoyanMorningBrief",
+        "task_name": "",
         "category": "knowledge"
     },
     {
@@ -45,12 +45,12 @@ DEFAULT_WORKFLOWS = [
         "title": "聊天复盘智能体",
         "command": "chat",
         "default_time": "07:00",
-        "schedule_type": "daily",
-        "enabled": True,
+        "schedule_type": "manual",
+        "enabled": False,
         "description": "多维分析本地聊天记录中的承诺、待办候选与关键风险点。",
         "inputs": "本地聊天导出文件",
         "outputs": "复盘 Markdown、待办候选",
-        "task_name": "MorningChatDigest",
+        "task_name": "",
         "category": "communication"
     },
     {
@@ -58,12 +58,12 @@ DEFAULT_WORKFLOWS = [
         "title": "全球热点晨报",
         "command": "news",
         "default_time": "07:45",
-        "schedule_type": "daily",
-        "enabled": True,
+        "schedule_type": "manual",
+        "enabled": False,
         "description": "聚合新闻源，去重筛选并智能生成早间结构化全球快讯。",
         "inputs": "RSS / 公开新闻源",
         "outputs": "新闻数据库、Markdown、飞书",
-        "task_name": "MorningGlobalNews",
+        "task_name": "",
         "category": "information"
     },
     {
@@ -71,12 +71,12 @@ DEFAULT_WORKFLOWS = [
         "title": "基金量化投顾",
         "command": "fund",
         "default_time": "14:00",
-        "schedule_type": "daily",
-        "enabled": True,
+        "schedule_type": "manual",
+        "enabled": False,
         "description": "读取持仓与全球实时行情快照，智能评估春节盈利目标与调仓提示。",
         "inputs": "持仓记录、新浪全球实时行情",
         "outputs": "评估报告、飞书富文本卡片",
-        "task_name": "FundDailyAdvisor1400",
+        "task_name": "",
         "category": "finance"
     },
     {
