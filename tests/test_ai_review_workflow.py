@@ -25,7 +25,10 @@ class AiReviewWorkflowTests(unittest.TestCase):
         self.assertIn("contents: read", workflow)
         self.assertIn("pull-requests: write", workflow)
         self.assertNotIn("write-all", workflow)
-        self.assertIn("github.actor == github.repository_owner", workflow)
+        self.assertIn(
+            "github.actor == (vars.AI_REVIEW_ACTOR || github.repository_owner)",
+            workflow,
+        )
         self.assertIn("python .github/scripts/ai_review.py", workflow)
         self.assertNotIn("anc95/ChatGPT-CodeReview", workflow)
         self.assertNotIn("continue-on-error:", workflow)
