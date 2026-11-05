@@ -99,3 +99,6 @@ Desktop.ini
 $RECYCLE.BIN/
 .DS_Store
 ._*
+
+# --- 10. WorkBuddy Local Workspace (memory & cache, not versioned) ---
+.workbuddy/
