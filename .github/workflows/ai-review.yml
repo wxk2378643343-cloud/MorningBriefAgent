@@ -25,7 +25,7 @@ jobs:
           
           # 2. 接口端点（默认使用 DeepSeek）
           OPENAI_API_ENDPOINT: https://api.deepseek.com/v1
-          MODEL: deepseek-chat
+          MODEL: deepseek-flash
           
           # 如需切换为 Kimi，将上面两行改为：
           # OPENAI_API_ENDPOINT: https://api.moonshot.cn/v1
