@@ -4,6 +4,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - '.gitignore'
+
+# 并发控制：多次推送自动取消前一次排队或运行中的任务，防止重复扣费刷屏
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -12,6 +21,7 @@ permissions:
 jobs:
   review:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,4 +42,6 @@ jobs:
           # MODEL: moonshot-v1-32k
           
           LANGUAGE: Chinese
+          # 忽略庞大的锁文件和打包产物，大幅节省 token
+          IGNORE_PATTERN: "**/*.lock,**/package-lock.json,**/dist/**,**/build/**"
           PROMPT: "请以资深架构师的视角，对本次 PR 的代码改动进行严格的代码审查。重点检查：1. 潜在的 Bug、并发隐患与边界条件；2. 性能与安全性漏洞；3. 架构分层规范（遵循项目 AGENTS.md 规范）；4. 提供具体的改进建议与优化代码示例。"
