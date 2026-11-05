@@ -113,6 +113,43 @@ class AiReviewWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(result["summary"]["verdict"], "建议合并")
 
+    def test_empty_model_content_retries_with_larger_budget(self):
+        class FakeClient:
+            def __init__(self):
+                self.payloads = []
+
+            def request(self, method, path, payload):
+                self.payloads.append(payload)
+                if len(self.payloads) == 1:
+                    return {
+                        "choices": [
+                            {
+                                "finish_reason": "length",
+                                "message": {"content": ""},
+                            }
+                        ]
+                    }
+                return {
+                    "choices": [
+                        {
+                            "finish_reason": "stop",
+                            "message": {
+                                "content": (
+                                    '{"summary":{"verdict":"建议合并"},'
+                                    '"findings":[]}'
+                                )
+                            },
+                        }
+                    ]
+                }
+
+        client = FakeClient()
+        result = ai_review.request_model_result(client, "review")
+
+        self.assertEqual(result["summary"]["verdict"], "建议合并")
+        self.assertEqual([item["max_tokens"] for item in client.payloads], [8000, 12000])
+        self.assertIn("上一次没有产生", client.payloads[1]["messages"][0]["content"])
+
 
 if __name__ == "__main__":
     unittest.main()

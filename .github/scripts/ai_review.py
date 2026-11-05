@@ -165,6 +165,51 @@ def parse_model_result(content: str) -> dict[str, Any]:
     return result
 
 
+def request_model_result(client: "ApiClient", prompt: str) -> dict[str, Any]:
+    """Request structured output, retrying once when reasoning consumes the answer."""
+    last_error: Exception | None = None
+    for attempt, max_tokens in enumerate((8_000, 12_000), start=1):
+        completion = client.request(
+            "POST",
+            "chat/completions",
+            {
+                "model": os.environ.get("AI_MODEL", "deepseek-flash"),
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": prompt
+                        + (
+                            ""
+                            if attempt == 1
+                            else "\n\n上一次没有产生可解析的最终 JSON。请压缩解释，只返回要求的 JSON。"
+                        ),
+                    }
+                ],
+                "temperature": 0.2,
+                "max_tokens": max_tokens,
+                "response_format": {"type": "json_object"},
+            },
+        )
+        choices = completion.get("choices") if isinstance(completion, dict) else None
+        if not choices:
+            last_error = ValueError("DeepSeek response has no choices")
+            continue
+        choice = choices[0]
+        message = choice.get("message") if isinstance(choice, dict) else None
+        content = message.get("content") if isinstance(message, dict) else None
+        if not isinstance(content, str) or not content.strip():
+            finish_reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+            last_error = ValueError(
+                f"DeepSeek returned empty content (finish_reason={finish_reason!r})"
+            )
+            continue
+        try:
+            return parse_model_result(content)
+        except (json.JSONDecodeError, ValueError) as error:
+            last_error = error
+    raise RuntimeError(f"DeepSeek did not return valid review JSON: {last_error}")
+
+
 def text_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -314,19 +359,8 @@ def run() -> None:
         os.environ.get("AI_API_ENDPOINT", "https://api.deepseek.com/v1"),
         "application/json",
     )
-    completion = deepseek.request(
-        "POST",
-        "chat/completions",
-        {
-            "model": os.environ.get("AI_MODEL", "deepseek-flash"),
-            "messages": [{"role": "user", "content": build_prompt(files)}],
-            "temperature": 0.2,
-            "max_tokens": 6000,
-            "response_format": {"type": "json_object"},
-        },
-    )
-    content = completion["choices"][0]["message"]["content"]
-    body, comments = prepare_review(parse_model_result(content), files)
+    result = request_model_result(deepseek, build_prompt(files))
+    body, comments = prepare_review(result, files)
     github.request(
         "POST",
         f"repos/{repository}/pulls/{pull_number}/reviews",
