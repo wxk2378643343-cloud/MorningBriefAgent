@@ -31,6 +31,7 @@ jobs:
     if: >-
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor == github.repository_owner &&
       github.actor != 'dependabot[bot]' &&
       github.actor != 'renovate[bot]'
     runs-on: ubuntu-latest
