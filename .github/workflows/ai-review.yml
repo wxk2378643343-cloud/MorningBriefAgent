@@ -1,0 +1,65 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths:
+      - "AGENTS.md"
+      - "main.py"
+      - "core/**"
+      - "services/**"
+      - "storage/**"
+      - "server/**"
+      - "desktop/src/**"
+      - "desktop/src-tauri/**"
+      - "scripts/**"
+      - "tests/**"
+      - "requirements*.txt"
+      - ".github/workflows/**"
+      - ".github/scripts/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor == (vars.AI_REVIEW_ACTOR || github.repository_owner) &&
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout review implementation
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Validate AI review configuration
+        shell: bash
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+        run: |
+          if [[ -z "$AI_API_KEY" ]]; then
+            echo "::error::Repository secret AI_API_KEY is not configured"
+            exit 1
+          fi
+
+      - name: Publish summary and inline findings
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AI_API_KEY: ${{ secrets.AI_API_KEY }}
+          AI_API_ENDPOINT: https://api.deepseek.com/v1
+          AI_MODEL: deepseek-flash
+        run: python .github/scripts/ai_review.py
