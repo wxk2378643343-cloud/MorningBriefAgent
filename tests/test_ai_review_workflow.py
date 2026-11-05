@@ -113,9 +113,9 @@ class AiReviewWorkflowTests(unittest.TestCase):
 
     def test_model_result_accepts_fenced_json(self):
         result = ai_review.parse_model_result(
-            '```json\n{"summary":{"verdict":"建议合并"},"findings":[]}\n```'
+            '```json\n{"assessment":"清晰","findings":[]}\n```'
         )
-        self.assertEqual(result["summary"]["verdict"], "建议合并")
+        self.assertEqual(result["assessment"], "清晰")
 
     def test_empty_model_content_retries_with_larger_budget(self):
         class FakeClient:
@@ -139,7 +139,7 @@ class AiReviewWorkflowTests(unittest.TestCase):
                             "finish_reason": "stop",
                             "message": {
                                 "content": (
-                                    '{"summary":{"verdict":"建议合并"},'
+                                    '{"assessment":"建议合并",'
                                     '"findings":[]}'
                                 )
                             },
@@ -148,11 +148,42 @@ class AiReviewWorkflowTests(unittest.TestCase):
                 }
 
         client = FakeClient()
-        result = ai_review.request_model_result(client, "review")
+        item = ai_review.ChangedFile(
+            "services/planning.py",
+            "@@ -1 +1 @@\n-old\n+new",
+            frozenset({1}),
+        )
+        result = ai_review.request_file_result(client, item)
 
-        self.assertEqual(result["summary"]["verdict"], "建议合并")
+        self.assertEqual(result["assessment"], "建议合并")
         self.assertEqual([item["max_tokens"] for item in client.payloads], [8000, 12000])
         self.assertIn("上一次没有产生", client.payloads[1]["messages"][0]["content"])
+
+    def test_file_results_are_combined_into_pr_summary(self):
+        item = ai_review.ChangedFile("services/planning.py", "patch", frozenset({3}))
+        combined = ai_review.combine_file_results(
+            [
+                (
+                    item,
+                    {
+                        "assessment": "服务层边界基本清晰。",
+                        "strengths": ["有失败测试"],
+                        "risks": ["状态未校验"],
+                        "test_assessment": "缺少非法状态测试。",
+                        "findings": [
+                            {
+                                "line": 3,
+                                "severity": "P1",
+                                "title": "状态未校验",
+                            }
+                        ],
+                    },
+                )
+            ]
+        )
+
+        self.assertEqual(combined["summary"]["verdict"], "修复后合并")
+        self.assertEqual(combined["findings"][0]["path"], "services/planning.py")
 
 
 if __name__ == "__main__":
