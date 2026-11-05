@@ -15,22 +15,20 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: AI Code Review (DeepSeek / Kimi / OpenAI 兼容)
-        uses: anc95/ChatGPT-Action@main
+        uses: anc95/ChatGPT-CodeReview@main
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # 1. API 密钥：在 GitHub 仓库 Settings -> Secrets and variables -> Actions 中配置
           OPENAI_API_KEY: ${{ secrets.AI_API_KEY }}
           
           # 2. 接口端点（默认使用 DeepSeek）
-          OPENAI_API_BASE: https://api.deepseek.com
+          OPENAI_API_ENDPOINT: https://api.deepseek.com/v1
           MODEL: deepseek-chat
           
           # 如需切换为 Kimi，将上面两行改为：
-          # OPENAI_API_BASE: https://api.moonshot.cn/v1
+          # OPENAI_API_ENDPOINT: https://api.moonshot.cn/v1
           # MODEL: moonshot-v1-32k
           
           LANGUAGE: Chinese
