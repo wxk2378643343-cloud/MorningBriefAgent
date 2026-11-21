@@ -4,7 +4,7 @@ MorningBriefAgent 正在重构为一个由飞书任务和日程驱动的个人�
 
 ## 当前版本
 
-`main` 目前维护产品需求和交付流程，处于产品设计阶段。运行入口会随实现发布。历史实现见 [backup/full-history-v1](https://github.com/wxk2378643343-cloud/MorningBriefAgent/tree/backup/full-history-v1)。
+`main` 目前维护产品需求和交付流程，处于产品设计阶段。运行入口会随实现发布。历史实现见 [backup/full-history-v1](https://github.com/wxk2378643343-cloud/morning-brief-agent/tree/backup/full-history-v1)。
 
 ## 从哪里开始
 
