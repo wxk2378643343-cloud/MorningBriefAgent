@@ -20,3 +20,9 @@ MorningBriefAgent 正在重构为一个由飞书任务和日程驱动的个人�
 ## 自动检查
 
 [测试工作流](.github/workflows/tests.yml)和 [AI Review 工作流](.github/workflows/ai-review.yml)位于仓库中。AI Review 面向符合工作流条件的本仓库 Pull Request，模型调用需要配置 `AI_API_KEY`。
+
+---
+
+## 📄 开源许可证
+
+本项目基于 [MIT License](LICENSE) 开源，详见根目录 [LICENSE](LICENSE) 文件。
